@@ -1,0 +1,10 @@
+{
+  "description": "Enhance your project's user experience with a fully responsive frontend that improves navigation and visual appeal for all users.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}
