@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
 import { DEMO_PATIENTS, DEMO_ESCALATIONS, DEMO_PIPELINE_STAGES, DEMO_CARE_TEAM, DEMO_SPARKLINE } from "../../lib/mockData";
+import type { PipelineStage } from "../../lib/types";
 import Card, { CardHeader, CardTitle } from "../../components/ui/Card";
 import Badge from "../../components/ui/Badge";
 import Button from "../../components/ui/Button";
@@ -12,6 +13,30 @@ export default function CareTeamPage() {
   const escalations = DEMO_ESCALATIONS.filter((e) => e.patientId === patient.id);
   const [acknowledged, setAcknowledged] = useState<Set<string>>(new Set());
   const [expandedLog, setExpandedLog] = useState<string | null>(null);
+  const [pipelineStages, setPipelineStages] = useState<PipelineStage[]>(DEMO_PIPELINE_STAGES);
+
+  useEffect(() => {
+    const triggered = sessionStorage.getItem("pipeline_triggered");
+    if (!triggered) return;
+    sessionStorage.removeItem("pipeline_triggered");
+
+    const newLog1 = { id: "l-triggered-1", timestamp: new Date().toISOString(), level: "info" as const, message: "Dose schedule generated for new AI-approved prescription", metadata: { patientId: patient.patientId } };
+    const newLog3 = { id: "l-triggered-3", timestamp: new Date().toISOString(), level: "info" as const, message: "Initial pattern eval: new prescription, no data yet, severity: none", metadata: { model: "gemini-2.0-flash-001" } };
+
+    // Stage 1 (Reminder Agent): running → complete
+    setPipelineStages((prev) => prev.map((s) => s.id === "stage-1" ? { ...s, status: "running" } : s));
+    setTimeout(() => {
+      setPipelineStages((prev) => prev.map((s) => s.id === "stage-1" ? { ...s, status: "complete", lastRun: new Date().toISOString(), logs: [newLog1, ...s.logs] } : s));
+    }, 1500);
+
+    // Stage 3 (Pattern Detection): running → complete
+    setTimeout(() => {
+      setPipelineStages((prev) => prev.map((s) => s.id === "stage-3" ? { ...s, status: "running" } : s));
+    }, 2000);
+    setTimeout(() => {
+      setPipelineStages((prev) => prev.map((s) => s.id === "stage-3" ? { ...s, status: "complete", lastRun: new Date().toISOString(), logs: [newLog3, ...s.logs] } : s));
+    }, 3500);
+  }, [patient.patientId]);
 
   const stageStatusColor: Record<string, string> = {
     idle: "bg-slate-200 text-slate-600",
@@ -102,7 +127,7 @@ export default function CareTeamPage() {
 
         {/* Stage flow */}
         <div className="flex items-start gap-0 overflow-x-auto pb-4 mb-5">
-          {DEMO_PIPELINE_STAGES.map((stage, i) => (
+          {pipelineStages.map((stage, i) => (
             <div key={stage.id} className="flex items-center flex-shrink-0">
               <div
                 className={`flex flex-col items-center text-center cursor-pointer group w-32 ${
@@ -128,7 +153,7 @@ export default function CareTeamPage() {
                   </p>
                 )}
               </div>
-              {i < DEMO_PIPELINE_STAGES.length - 1 && (
+              {i < pipelineStages.length - 1 && (
                 <div className="flex items-center mx-1 -mt-6">
                   <div className="w-6 h-0.5 bg-slate-200" />
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width={12} height={12} className="text-slate-300">
@@ -142,7 +167,7 @@ export default function CareTeamPage() {
 
         {/* Agent logs */}
         {expandedLog && (() => {
-          const stage = DEMO_PIPELINE_STAGES.find((s) => s.id === expandedLog);
+          const stage = pipelineStages.find((s) => s.id === expandedLog);
           if (!stage) return null;
           return (
             <div className="border-t border-slate-100 pt-4 animate-fade-in">

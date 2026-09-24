@@ -86,6 +86,19 @@ export interface HeatmapCell {
   value: number;
 }
 
+export interface AIPrescriptionSuggestion {
+  name: string;
+  genericName: string;
+  strength: string;
+  unit: string;
+  frequency: string;
+  quantity: number;
+  days: number;
+  instructions: string;
+  reasoning: string;
+  citations: Citation[];
+}
+
 export interface AIAnalysis {
   id: string;
   type: "diagnostic" | "pattern";
@@ -101,6 +114,7 @@ export interface AIAnalysis {
   modelVersion: string;
   createdAt: string;
   reviewed?: boolean;
+  suggestedMedications?: AIPrescriptionSuggestion[];
 }
 
 export interface Citation {

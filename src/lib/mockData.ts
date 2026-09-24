@@ -232,6 +232,58 @@ export const DEMO_AI_ANALYSIS: AIAnalysis = {
   modelVersion: "gemini-2.0-flash-001",
   createdAt: "2026-09-12T08:14:22Z",
   reviewed: false,
+  suggestedMedications: [
+    {
+      name: "Jardiance",
+      genericName: "Empagliflozin",
+      strength: "10",
+      unit: "mg",
+      frequency: "Once daily (QD)",
+      quantity: 30,
+      days: 30,
+      instructions: "Take in the morning, with or without food. Monitor for signs of UTI or genital yeast infection.",
+      reasoning: "Patient has both T2DM and hypertension. SGLT2 inhibitors (empagliflozin) provide dual benefit: HbA1c reduction and demonstrated 24% reduction in major cardiovascular events per EMPA-REG OUTCOME trial. Current metformin regimen shows suboptimal glucose control at 7.1% HbA1c.",
+      citations: [
+        {
+          id: "c-sug-001",
+          title: "EMPA-REG OUTCOME: Empagliflozin, Cardiovascular Outcomes, and Mortality in T2DM",
+          publisher: "New England Journal of Medicine",
+          date: "2015-11",
+          relevanceNote: "Demonstrated 24% reduction in cardiovascular death in T2DM patients with hypertension — matches patient profile.",
+          type: "research_study",
+        },
+        {
+          id: "c-sug-002",
+          title: "ADA Standards of Medical Care in Diabetes 2026",
+          publisher: "American Diabetes Association",
+          date: "2026-01",
+          relevanceNote: "Recommends SGLT2 inhibitor addition when HbA1c remains above 7.0% on metformin with concurrent cardiovascular risk factors.",
+          type: "guideline",
+        },
+      ],
+    },
+    {
+      name: "Vitamin D3",
+      genericName: "Cholecalciferol",
+      strength: "1000",
+      unit: "IU",
+      frequency: "Once daily (QD)",
+      quantity: 30,
+      days: 30,
+      instructions: "Take with a meal containing fat for optimal absorption.",
+      reasoning: "Vitamin D deficiency is prevalent in T2DM patients (>70% incidence in published cohorts) and correlates with insulin resistance. Patient's last labs did not include 25-OH vitamin D levels; supplementation is low-risk and commonly indicated pending formal testing.",
+      citations: [
+        {
+          id: "c-sug-003",
+          title: "Vitamin D Deficiency and Type 2 Diabetes: A Systematic Review",
+          publisher: "Diabetes Care",
+          date: "2024-06",
+          relevanceNote: "Meta-analysis of 28 RCTs confirms prevalence >70% and modest benefit on insulin sensitivity when corrected.",
+          type: "research_study",
+        },
+      ],
+    },
+  ],
 };
 
 export const DEMO_PRESCRIPTIONS: Prescription[] = [
