@@ -19,3 +19,8 @@ logs/
 # beside it.
 /.plugins/
 /.opencode-skills/
+.agents
+openspec
+agents
+skills
+prompts
