@@ -1,6 +1,12 @@
 import { useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
-import type { AIPrescriptionSuggestion } from "../../lib/types";
+import type { AIPrescriptionSuggestion, PatientUploadedReport } from "../../lib/types";
+import {
+  formatFileSize,
+  getPatientUploadedReports,
+  markPatientReportReviewed,
+  REPORT_CATEGORY_LABELS,
+} from "../../lib/patientReports";
 import {
   DEMO_PATIENTS,
   DEMO_VISITS,
@@ -19,7 +25,7 @@ import DoseHeatmap from "../../components/charts/DoseHeatmap";
 import AdherenceRing from "../../components/charts/AdherenceRing";
 import ScoreTrendChart from "../../components/charts/ScoreTrendChart";
 
-const TABS = ["Overview", "Visits", "Adherence", "AI Assistant", "Prescription"];
+const TABS = ["Overview", "Visits", "Adherence", "Reports", "AI Assistant", "Prescription"];
 
 export default function PatientPage() {
   const { patientId } = useParams();
@@ -45,6 +51,7 @@ export default function PatientPage() {
 
   const patient = DEMO_PATIENTS.find((p) => p.id === patientId) || DEMO_PATIENTS[0];
   const visits = DEMO_VISITS.filter((v) => v.patientId === patient.id);
+  const [patientReports, setPatientReports] = useState(() => getPatientUploadedReports(patient.id));
 
   const handleRunAI = () => {
     if (!symptoms.trim()) return;
@@ -71,6 +78,22 @@ export default function PatientPage() {
     setTimeout(() => setApproveToast(false), 4000);
     setTimeout(() => setJustApprovedIds(new Set()), 3500);
     setActiveTab("Prescription");
+  };
+
+  const handleViewReport = (report: PatientUploadedReport) => {
+    window.open(report.fileDataUrl, "_blank", "noopener,noreferrer");
+  };
+
+  const handleMarkReportReviewed = (reportId: string) => {
+    const reports = markPatientReportReviewed(reportId);
+    setPatientReports(reports.filter((report) => report.patientId === patient.id));
+  };
+
+  const handleTabChange = (tab: string) => {
+    if (tab === "Reports") {
+      setPatientReports(getPatientUploadedReports(patient.id));
+    }
+    setActiveTab(tab);
   };
 
   return (
@@ -127,7 +150,7 @@ export default function PatientPage() {
           {TABS.map((tab) => (
             <button
               key={tab}
-              onClick={() => setActiveTab(tab)}
+              onClick={() => handleTabChange(tab)}
               className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors whitespace-nowrap cursor-pointer ${
                 activeTab === tab
                   ? "border-teal-600 text-teal-700"
@@ -354,6 +377,94 @@ export default function PatientPage() {
                 </div>
               </div>
             </Card>
+          </div>
+        )}
+
+        {/* PATIENT-UPLOADED REPORTS TAB */}
+        {activeTab === "Reports" && (
+          <div className="space-y-5 animate-fade-in">
+            <div className="flex items-start justify-between gap-4 flex-wrap">
+              <div>
+                <h2 className="text-base font-semibold text-slate-900">Patient-Uploaded Reports</h2>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Medical documents shared directly by {patient.name}.
+                </p>
+              </div>
+              <Badge variant={patientReports.some((report) => report.status === "shared") ? "warning" : "default"}>
+                {patientReports.filter((report) => report.status === "shared").length} awaiting review
+              </Badge>
+            </div>
+
+            {patientReports.length === 0 ? (
+              <Card padding="lg" className="border-dashed border-slate-200 bg-slate-50 text-center">
+                <div className="w-12 h-12 rounded-xl bg-white border border-slate-200 text-slate-400 flex items-center justify-center mx-auto mb-3">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width={20} height={20}>
+                    <path d="M7 3h7l4 4v14H7z" strokeLinejoin="round" />
+                    <path d="M14 3v5h5M10 13h5M10 17h5" strokeLinecap="round" />
+                  </svg>
+                </div>
+                <p className="text-sm font-medium text-slate-700">No patient-uploaded reports</p>
+                <p className="text-xs text-slate-500 mt-1">
+                  Reports uploaded from the patient portal will appear here.
+                </p>
+              </Card>
+            ) : (
+              <div className="space-y-3">
+                {patientReports.map((report) => (
+                  <Card
+                    key={report.id}
+                    padding="md"
+                    className={report.status === "shared" ? "border-cyan-200 bg-cyan-50/30" : ""}
+                  >
+                    <div className="flex items-start justify-between gap-4 flex-wrap">
+                      <div className="flex items-start gap-3 min-w-0">
+                        <div className="w-11 h-11 rounded-xl bg-cyan-100 text-cyan-700 flex items-center justify-center flex-shrink-0">
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width={20} height={20}>
+                            <path d="M7 3h7l4 4v14H7z" strokeLinejoin="round" />
+                            <path d="M14 3v5h5M10 13h5M10 17h5" strokeLinecap="round" />
+                          </svg>
+                        </div>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <h3 className="text-sm font-semibold text-slate-900">{report.title}</h3>
+                            <Badge variant={report.status === "reviewed" ? "success" : "warning"}>
+                              {report.status === "reviewed" ? "Reviewed" : "New patient upload"}
+                            </Badge>
+                          </div>
+                          <p className="text-xs text-slate-500 mt-1">
+                            {REPORT_CATEGORY_LABELS[report.category]} · Report date {new Date(`${report.reportDate}T00:00:00`).toLocaleDateString()}
+                          </p>
+                          <p className="text-xs text-slate-400 mt-1">
+                            Uploaded {new Date(report.uploadedAt).toLocaleString()} · {report.fileName} · {formatFileSize(report.fileSize)}
+                          </p>
+                          {report.note && (
+                            <div className="mt-3 rounded-lg border border-slate-100 bg-white px-3 py-2">
+                              <p className="text-xs font-semibold text-slate-500 mb-1">Patient note</p>
+                              <p className="text-sm text-slate-700">{report.note}</p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <Button variant="outline" size="sm" onClick={() => handleViewReport(report)}>
+                          View Report
+                        </Button>
+                        {report.status !== "reviewed" && (
+                          <Button variant="success" size="sm" onClick={() => handleMarkReportReviewed(report.id)}>
+                            Mark as Reviewed
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            )}
+
+            <div className="rounded-lg border border-amber-100 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+              Patient-uploaded documents must be clinically verified before being used for treatment decisions.
+            </div>
           </div>
         )}
 

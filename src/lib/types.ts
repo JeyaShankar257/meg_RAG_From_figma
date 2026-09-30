@@ -199,6 +199,23 @@ export interface Report {
   deliveredAt?: string;
 }
 
+export interface PatientUploadedReport {
+  id: string;
+  patientId: string;
+  patientName: string;
+  title: string;
+  category: "blood_test" | "imaging" | "prescription" | "discharge_summary" | "other";
+  reportDate: string;
+  note?: string;
+  fileName: string;
+  fileType: string;
+  fileSize: number;
+  fileDataUrl: string;
+  uploadedAt: string;
+  status: "shared" | "reviewed";
+  reviewedAt?: string;
+}
+
 export interface TrustScoreComponent {
   name: string;
   score: number;
