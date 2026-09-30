@@ -10,7 +10,8 @@ export default function NewPatient() {
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState({
     firstName: "", lastName: "", email: "", phone: "",
-    dob: "", gender: "", address: "", conditions: "",
+    dob: "", gender: "", address: "", guardianName: "",
+    guardianPhone: "", guardianEmail: "", conditions: "",
     assignedDoctor: "Dr. Sarah Chen", careTeamNotes: "", consent: false,
   });
 
@@ -75,6 +76,24 @@ export default function NewPatient() {
             <span className="text-slate-500">Assigned to</span>
             <span className="font-medium text-slate-800">{form.assignedDoctor}</span>
           </div>
+          {form.guardianName && (
+            <div className="flex justify-between">
+              <span className="text-slate-500">Guardian</span>
+              <span className="font-medium text-slate-800">{form.guardianName}</span>
+            </div>
+          )}
+          {form.guardianPhone && (
+            <div className="flex justify-between">
+              <span className="text-slate-500">Guardian phone</span>
+              <span className="font-medium text-slate-800">{form.guardianPhone}</span>
+            </div>
+          )}
+          {form.guardianEmail && (
+            <div className="flex justify-between">
+              <span className="text-slate-500">Guardian email</span>
+              <span className="font-medium text-slate-800">{form.guardianEmail}</span>
+            </div>
+          )}
         </div>
 
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-6 text-xs text-amber-700">
@@ -85,7 +104,7 @@ export default function NewPatient() {
           <Button variant="secondary" fullWidth onClick={() => navigate("/doctor")}>
             Back to Dashboard
           </Button>
-          <Button fullWidth onClick={() => { setStep("form"); setForm({ firstName: "", lastName: "", email: "", phone: "", dob: "", gender: "", address: "", conditions: "", assignedDoctor: "Dr. Sarah Chen", careTeamNotes: "", consent: false }); }}>
+          <Button fullWidth onClick={() => { setStep("form"); setForm({ firstName: "", lastName: "", email: "", phone: "", dob: "", gender: "", address: "", guardianName: "", guardianPhone: "", guardianEmail: "", conditions: "", assignedDoctor: "Dr. Sarah Chen", careTeamNotes: "", consent: false }); }}>
             Add Another Patient
           </Button>
         </div>
@@ -169,6 +188,34 @@ export default function NewPatient() {
                 placeholder="123 Main Street, City, State ZIP"
               />
             </div>
+          </div>
+        </Card>
+
+        <Card padding="md">
+          <h2 className="text-sm font-semibold text-slate-800 mb-4">Guardian Information</h2>
+          <div className="grid sm:grid-cols-2 gap-4">
+            <div className="sm:col-span-2">
+              <Input
+                label="Guardian Name"
+                value={form.guardianName}
+                onChange={(e) => setForm({ ...form, guardianName: e.target.value })}
+                placeholder="Full name"
+              />
+            </div>
+            <Input
+              label="Guardian Phone Number"
+              type="tel"
+              value={form.guardianPhone}
+              onChange={(e) => setForm({ ...form, guardianPhone: e.target.value })}
+              placeholder="+1 (555) 000-0000"
+            />
+            <Input
+              label="Guardian Email Address"
+              type="email"
+              value={form.guardianEmail}
+              onChange={(e) => setForm({ ...form, guardianEmail: e.target.value })}
+              placeholder="guardian@email.com"
+            />
           </div>
         </Card>
 

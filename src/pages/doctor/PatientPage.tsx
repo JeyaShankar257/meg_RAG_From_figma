@@ -463,9 +463,12 @@ export default function PatientPage() {
                       {editedMeds.map((med, idx) => (
                         <div key={idx} className="bg-white rounded-xl border border-teal-100 p-4 shadow-sm">
                           <div className="flex items-start justify-between gap-2 mb-3">
-                            <div>
-                              <p className="text-sm font-semibold text-slate-900">{med.name}</p>
-                              <p className="text-xs text-slate-500">{med.genericName}</p>
+                            <div className="min-w-0">
+                              <p className="text-xs font-semibold uppercase tracking-wide text-teal-700">Medicine</p>
+                              <p className="mt-1 inline-flex rounded-lg border border-teal-200 bg-teal-100 px-3 py-1.5 text-base font-bold text-teal-950 shadow-sm">
+                                {med.name}
+                              </p>
+                              <p className="mt-1 text-xs text-slate-500">Generic: {med.genericName}</p>
                             </div>
                             <Badge variant="ai">AI suggested</Badge>
                           </div>
@@ -748,9 +751,12 @@ export default function PatientPage() {
               {editedMeds.map((med, idx) => (
                 <div key={idx} className="bg-teal-50 border border-teal-200 rounded-xl p-4">
                   <div className="flex items-start justify-between gap-2 mb-2">
-                    <div>
-                      <p className="text-sm font-semibold text-slate-900">{med.name}</p>
-                      <p className="text-xs text-slate-500">{med.genericName}</p>
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-teal-700">Medicine</p>
+                      <p className="mt-1 inline-flex rounded-lg border border-teal-300 bg-white px-3 py-1.5 text-base font-bold text-teal-950 shadow-sm">
+                        {med.name}
+                      </p>
+                      <p className="mt-1 text-xs text-slate-500">Generic: {med.genericName}</p>
                     </div>
                     <Badge variant="ai">AI suggested</Badge>
                   </div>
