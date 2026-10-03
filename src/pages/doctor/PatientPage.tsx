@@ -1,12 +1,20 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
-import type { AIPrescriptionSuggestion, PatientUploadedReport } from "../../lib/types";
+import type {
+  AIAnalysis,
+  AIPrescriptionSuggestion,
+  PatientUploadedReport,
+  RagAnalysisResponse,
+} from "../../lib/types";
 import {
   formatFileSize,
   getPatientUploadedReports,
   markPatientReportReviewed,
   REPORT_CATEGORY_LABELS,
+  REPORT_INDEXING_LABELS,
+  setPatientReportIndexingStatus,
 } from "../../lib/patientReports";
+import { getRagService } from "../../lib/rag";
 import {
   DEMO_PATIENTS,
   DEMO_VISITS,
@@ -24,6 +32,8 @@ import TrustBadge from "../../components/ui/TrustBadge";
 import DoseHeatmap from "../../components/charts/DoseHeatmap";
 import AdherenceRing from "../../components/charts/AdherenceRing";
 import ScoreTrendChart from "../../components/charts/ScoreTrendChart";
+import RagAssistantPanel from "../../components/doctor/rag/RagAssistantPanel";
+import PrescriptionSuggestionCard from "../../components/doctor/rag/PrescriptionSuggestionCard";
 
 const TABS = ["Overview", "Visits", "Adherence", "Reports", "AI Assistant", "Prescription"];
 
@@ -32,17 +42,13 @@ export default function PatientPage() {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState("Overview");
   const [expandedVisit, setExpandedVisit] = useState<string | null>("v-001");
-  const [expandedCitation, setExpandedCitation] = useState(false);
-  const [aiRunning, setAiRunning] = useState(false);
-  const [symptoms, setSymptoms] = useState("");
-  const [aiResult, setAiResult] = useState<typeof DEMO_AI_ANALYSIS | null>(DEMO_AI_ANALYSIS);
+  const [aiResult, setAiResult] = useState<AIAnalysis | null>(null);
+  const [ragResponse, setRagResponse] = useState<RagAnalysisResponse | null>(null);
   const [prescriptionEdit, setPrescriptionEdit] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
 
   // AI prescription suggestion state
-  const [editedMeds, setEditedMeds] = useState<AIPrescriptionSuggestion[]>(
-    DEMO_AI_ANALYSIS.suggestedMedications ?? []
-  );
+  const [editedMeds, setEditedMeds] = useState<AIPrescriptionSuggestion[]>([]);
   const [expandedMedCitation, setExpandedMedCitation] = useState<Record<number, boolean>>({});
   const [showApprovePreview, setShowApprovePreview] = useState(false);
   const [approvedPrescriptions, setApprovedPrescriptions] = useState<AIPrescriptionSuggestion[]>([]);
@@ -52,17 +58,14 @@ export default function PatientPage() {
   const patient = DEMO_PATIENTS.find((p) => p.id === patientId) || DEMO_PATIENTS[0];
   const visits = DEMO_VISITS.filter((v) => v.patientId === patient.id);
   const [patientReports, setPatientReports] = useState(() => getPatientUploadedReports(patient.id));
+  const [reindexingReportId, setReindexingReportId] = useState<string | null>(null);
 
-  const handleRunAI = () => {
-    if (!symptoms.trim()) return;
-    setAiRunning(true);
+  useEffect(() => {
+    setRagResponse(null);
     setAiResult(null);
-    setTimeout(() => {
-      setAiRunning(false);
-      setAiResult(DEMO_AI_ANALYSIS);
-      setEditedMeds(DEMO_AI_ANALYSIS.suggestedMedications ?? []);
-    }, 2500);
-  };
+    setEditedMeds([]);
+    setExpandedMedCitation({});
+  }, [patient.id]);
 
   const handleMedFieldChange = (idx: number, field: keyof AIPrescriptionSuggestion, value: string | number) => {
     setEditedMeds((prev) => prev.map((m, i) => i === idx ? { ...m, [field]: value } : m));
@@ -87,6 +90,24 @@ export default function PatientPage() {
   const handleMarkReportReviewed = (reportId: string) => {
     const reports = markPatientReportReviewed(reportId);
     setPatientReports(reports.filter((report) => report.patientId === patient.id));
+  };
+
+  const handleRetryReportIndexing = async (reportId: string) => {
+    setReindexingReportId(reportId);
+    try {
+      await getRagService().reindexReport(reportId);
+      const reports = setPatientReportIndexingStatus(reportId, "indexing");
+      setPatientReports(reports.filter((report) => report.patientId === patient.id));
+    } catch {
+      const reports = setPatientReportIndexingStatus(
+        reportId,
+        "failed",
+        "Indexing retry could not be started.",
+      );
+      setPatientReports(reports.filter((report) => report.patientId === patient.id));
+    } finally {
+      setReindexingReportId(null);
+    }
   };
 
   const handleTabChange = (tab: string) => {
@@ -430,6 +451,17 @@ export default function PatientPage() {
                             <Badge variant={report.status === "reviewed" ? "success" : "warning"}>
                               {report.status === "reviewed" ? "Reviewed" : "New patient upload"}
                             </Badge>
+                            <Badge variant={
+                              report.indexingStatus === "ready"
+                                ? "success"
+                                : report.indexingStatus === "failed"
+                                  ? "error"
+                                  : report.indexingStatus === "indexing"
+                                    ? "warning"
+                                    : "default"
+                            }>
+                              {REPORT_INDEXING_LABELS[report.indexingStatus ?? "not_indexed"]}
+                            </Badge>
                           </div>
                           <p className="text-xs text-slate-500 mt-1">
                             {REPORT_CATEGORY_LABELS[report.category]} · Report date {new Date(`${report.reportDate}T00:00:00`).toLocaleDateString()}
@@ -437,6 +469,9 @@ export default function PatientPage() {
                           <p className="text-xs text-slate-400 mt-1">
                             Uploaded {new Date(report.uploadedAt).toLocaleString()} · {report.fileName} · {formatFileSize(report.fileSize)}
                           </p>
+                          {report.indexingStatus === "failed" && report.indexingError && (
+                            <p className="text-xs text-rose-600 mt-1">{report.indexingError}</p>
+                          )}
                           {report.note && (
                             <div className="mt-3 rounded-lg border border-slate-100 bg-white px-3 py-2">
                               <p className="text-xs font-semibold text-slate-500 mb-1">Patient note</p>
@@ -455,6 +490,15 @@ export default function PatientPage() {
                             Mark as Reviewed
                           </Button>
                         )}
+                        {report.indexingStatus === "failed" && (
+                          <Button
+                            size="sm"
+                            loading={reindexingReportId === report.id}
+                            onClick={() => void handleRetryReportIndexing(report.id)}
+                          >
+                            Retry Indexing
+                          </Button>
+                        )}
                       </div>
                     </div>
                   </Card>
@@ -471,239 +515,37 @@ export default function PatientPage() {
         {/* AI ASSISTANT TAB */}
         {activeTab === "AI Assistant" && (
           <div className="space-y-5 animate-fade-in">
-            <div className="flex items-center gap-2">
-              <h2 className="text-base font-semibold text-slate-900">AI Diagnostic Assistant</h2>
-              <Badge variant="ai">Research prototype · Not a diagnosis</Badge>
-            </div>
+            <RagAssistantPanel
+              patientId={patient.id}
+              patientContext={[
+                ...patient.conditions,
+                ...DEMO_PRESCRIPTIONS
+                  .filter((prescription) => prescription.status === "active")
+                  .slice(0, 2)
+                  .map((prescription) => `${prescription.medication.name} ${prescription.medication.strength}${prescription.medication.unit}`),
+                `${patient.adherenceScore}% adherence`,
+                `${patientReports.filter((report) => report.indexingStatus === "ready").length} searchable reports`,
+              ]}
+              initialResponse={ragResponse}
+              onComplete={(response) => {
+                setRagResponse(response);
+                setAiResult(response.analysis ?? null);
+                setEditedMeds(response.analysis?.suggestedMedications ?? []);
+                setExpandedMedCitation({});
+              }}
+            />
 
-            <Card padding="md">
-              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Patient Context (auto-loaded)</p>
-              <div className="flex flex-wrap gap-2 mb-4">
-                {["Type 2 Diabetes", "Hypertension", "Metformin 1000mg BID", "Amlodipine 5mg", "84% adherence (last 30d)"].map((tag) => (
-                  <span key={tag} className="text-xs bg-teal-50 text-teal-700 border border-teal-100 px-2 py-0.5 rounded-full">{tag}</span>
-                ))}
-              </div>
-              <textarea
-                value={symptoms}
-                onChange={(e) => setSymptoms(e.target.value)}
-                placeholder="Describe current symptoms or clinical question for AI analysis…"
-                rows={3}
-                className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-teal-500 resize-none placeholder-slate-400 text-slate-900"
+            {aiResult?.suggestedMedications && aiResult.suggestedMedications.length > 0 && (
+              <PrescriptionSuggestionCard
+                medications={editedMeds}
+                expandedCitations={expandedMedCitation}
+                onToggleCitations={(index) => setExpandedMedCitation((previous) => ({
+                  ...previous,
+                  [index]: !previous[index],
+                }))}
+                onFieldChange={handleMedFieldChange}
+                onApprove={() => setShowApprovePreview(true)}
               />
-              <div className="flex items-center justify-between mt-3">
-                <p className="text-xs text-slate-400">AI will analyze symptoms against patient history, current medications, and adherence context.</p>
-                <Button onClick={handleRunAI} loading={aiRunning} disabled={!symptoms.trim()}>
-                  Run Analysis
-                </Button>
-              </div>
-            </Card>
-
-            {/* Typing indicator */}
-            {aiRunning && (
-              <Card padding="md" className="animate-fade-in">
-                <div className="flex items-center gap-3 text-slate-500">
-                  <div className="flex gap-1">
-                    <span className="w-2 h-2 rounded-full bg-teal-500 dot-1" />
-                    <span className="w-2 h-2 rounded-full bg-teal-500 dot-2" />
-                    <span className="w-2 h-2 rounded-full bg-teal-500 dot-3" />
-                  </div>
-                  <span className="text-sm">AI is analyzing patient context…</span>
-                </div>
-              </Card>
-            )}
-
-            {/* AI result */}
-            {aiResult && !aiRunning && (
-              <div className="space-y-4 animate-fade-in">
-                <Card padding="md">
-                  <div className="flex items-start justify-between gap-4 mb-4">
-                    <div>
-                      <div className="flex items-center gap-2 mb-1">
-                        <Badge variant="ai">AI Analysis Complete</Badge>
-                        <span className="text-xs text-slate-400">{new Date(aiResult.createdAt).toLocaleTimeString()}</span>
-                      </div>
-                      <h3 className="text-sm font-semibold text-slate-900">{aiResult.hypothesis}</h3>
-                    </div>
-                    <div className="text-right flex-shrink-0">
-                      <div className="text-lg font-bold text-teal-700">{Math.round(aiResult.confidence * 100)}%</div>
-                      <div className="text-xs text-slate-400">Confidence</div>
-                    </div>
-                  </div>
-
-                  {/* Confidence bar */}
-                  <div className="h-1.5 bg-slate-100 rounded-full mb-4">
-                    <div
-                      className="h-full bg-teal-500 rounded-full transition-all duration-700"
-                      style={{ width: `${aiResult.confidence * 100}%` }}
-                    />
-                  </div>
-
-                  <div className="bg-slate-50 rounded-xl p-4 border border-slate-100 mb-4">
-                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Reasoning</p>
-                    <p className="text-sm text-slate-700 leading-relaxed">{aiResult.explanation}</p>
-                  </div>
-
-                  {aiResult.safetyFlags.length > 0 && (
-                    <div className="bg-rose-50 border border-rose-200 rounded-lg p-3 mb-4">
-                      <p className="text-xs font-semibold text-rose-700 mb-1">Safety Flags</p>
-                      {aiResult.safetyFlags.map((flag) => (
-                        <p key={flag} className="text-xs text-rose-600">{flag}</p>
-                      ))}
-                    </div>
-                  )}
-
-                  <div className="bg-amber-50 border border-amber-100 rounded-lg p-3 text-xs text-amber-700">
-                    Doctor review required before any clinical action. AI output is advisory only. Model: {aiResult.modelVersion}
-                  </div>
-                </Card>
-
-                {/* AI Prescription Suggestion */}
-                {aiResult.suggestedMedications && aiResult.suggestedMedications.length > 0 && (
-                  <Card padding="md" className="border border-teal-200 bg-teal-50/30">
-                    <div className="flex items-start justify-between gap-3 mb-4">
-                      <div>
-                        <h3 className="text-sm font-semibold text-slate-900">AI Prescription Suggestion</h3>
-                        <p className="text-xs text-slate-500 mt-0.5">Edit fields inline before approving</p>
-                      </div>
-                      <span className="text-xs bg-amber-100 text-amber-700 border border-amber-200 px-2.5 py-1 rounded-full font-medium flex-shrink-0">
-                        Requires doctor approval
-                      </span>
-                    </div>
-
-                    <div className="space-y-4">
-                      {editedMeds.map((med, idx) => (
-                        <div key={idx} className="bg-white rounded-xl border border-teal-100 p-4 shadow-sm">
-                          <div className="flex items-start justify-between gap-2 mb-3">
-                            <div className="min-w-0">
-                              <p className="text-xs font-semibold uppercase tracking-wide text-teal-700">Medicine</p>
-                              <p className="mt-1 inline-flex rounded-lg border border-teal-200 bg-teal-100 px-3 py-1.5 text-base font-bold text-teal-950 shadow-sm">
-                                {med.name}
-                              </p>
-                              <p className="mt-1 text-xs text-slate-500">Generic: {med.genericName}</p>
-                            </div>
-                            <Badge variant="ai">AI suggested</Badge>
-                          </div>
-
-                          {/* Inline-editable fields */}
-                          <div className="grid sm:grid-cols-2 gap-3 mb-3">
-                            {[
-                              { label: "Strength", field: "strength" as const, suffix: med.unit, type: "text" },
-                              { label: "Frequency", field: "frequency" as const, suffix: "", type: "text" },
-                              { label: "Quantity (tablets)", field: "quantity" as const, suffix: "", type: "number" },
-                              { label: "Days", field: "days" as const, suffix: "", type: "number" },
-                            ].map(({ label, field, suffix, type }) => (
-                              <div key={field} className="bg-slate-50 rounded-lg px-3 py-2 border border-slate-100">
-                                <div className="text-xs text-slate-400 mb-1">{label}</div>
-                                <div className="flex items-center gap-1">
-                                  <input
-                                    type={type}
-                                    value={med[field] as string | number}
-                                    onChange={(e) => handleMedFieldChange(idx, field, type === "number" ? Number(e.target.value) : e.target.value)}
-                                    className="flex-1 text-sm font-medium text-slate-800 bg-transparent border-b border-dashed border-slate-300 focus:outline-none focus:border-teal-500 min-w-0"
-                                  />
-                                  {suffix && <span className="text-xs text-slate-400 flex-shrink-0">{suffix}</span>}
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-
-                          <div className="bg-slate-50 rounded-lg px-3 py-2 border border-slate-100 mb-3">
-                            <div className="text-xs text-slate-400 mb-1">Instructions</div>
-                            <input
-                              type="text"
-                              value={med.instructions}
-                              onChange={(e) => handleMedFieldChange(idx, "instructions", e.target.value)}
-                              className="w-full text-sm text-slate-700 bg-transparent border-b border-dashed border-slate-300 focus:outline-none focus:border-teal-500"
-                            />
-                          </div>
-
-                          <div className="bg-teal-50 rounded-lg px-3 py-2.5 border border-teal-100 text-xs text-teal-700 mb-3 leading-relaxed">
-                            <span className="font-semibold">AI Reasoning: </span>{med.reasoning}
-                          </div>
-
-                          <button
-                            onClick={() => setExpandedMedCitation((prev) => ({ ...prev, [idx]: !prev[idx] }))}
-                            className="text-xs text-teal-600 font-medium flex items-center gap-1 hover:text-teal-800 cursor-pointer"
-                          >
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width={12} height={12}><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                            {med.citations.length} supporting citation{med.citations.length !== 1 ? "s" : ""}
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width={10} height={10}
-                              className={`transition-transform ${expandedMedCitation[idx] ? "rotate-180" : ""}`}>
-                              <path d="M19 9l-7 7-7-7" strokeLinecap="round" strokeLinejoin="round" />
-                            </svg>
-                          </button>
-
-                          {expandedMedCitation[idx] && (
-                            <div className="mt-3 space-y-2 animate-fade-in">
-                              {med.citations.map((c) => (
-                                <div key={c.id} className="border border-slate-100 rounded-lg p-3 bg-slate-50">
-                                  <div className="flex items-start justify-between gap-2">
-                                    <p className="text-xs font-medium text-slate-800">{c.title}</p>
-                                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium flex-shrink-0 ${
-                                      c.type === "guideline" ? "bg-teal-50 text-teal-700 border border-teal-200" : "bg-slate-100 text-slate-600"
-                                    }`}>{c.type === "guideline" ? "Guideline" : "Research"}</span>
-                                  </div>
-                                  <p className="text-[10px] text-slate-500 mt-0.5">{c.publisher} · {c.date}</p>
-                                  <p className="text-[10px] text-slate-600 italic mt-1">{c.relevanceNote}</p>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-
-                    <button
-                      onClick={() => setShowApprovePreview(true)}
-                      className="w-full mt-4 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-semibold text-sm py-3 rounded-xl transition-colors flex items-center justify-center gap-2 cursor-pointer"
-                    >
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width={16} height={16}>
-                        <path d="M9 11l3 3L22 4" strokeLinecap="round" strokeLinejoin="round"/>
-                        <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" strokeLinecap="round" strokeLinejoin="round"/>
-                      </svg>
-                      Approve &amp; Prescribe
-                    </button>
-                  </Card>
-                )}
-
-                {/* Citations */}
-                <Card padding="md">
-                  <button
-                    onClick={() => setExpandedCitation(!expandedCitation)}
-                    className="w-full flex items-center justify-between cursor-pointer"
-                  >
-                    <div className="flex items-center gap-2">
-                      <p className="text-sm font-semibold text-slate-900">Research Citations</p>
-                      <Badge variant="default">{aiResult.citations.length}</Badge>
-                    </div>
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width={16} height={16}
-                      className={`text-slate-400 transition-transform ${expandedCitation ? "rotate-180" : ""}`}>
-                      <path d="M19 9l-7 7-7-7" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                  </button>
-
-                  {expandedCitation && (
-                    <div className="mt-4 space-y-3 animate-fade-in">
-                      {aiResult.citations.map((c) => (
-                        <div key={c.id} className="border border-slate-100 rounded-xl p-3 bg-slate-50">
-                          <div className="flex items-start justify-between gap-2">
-                            <div>
-                              <p className="text-sm font-medium text-slate-800">{c.title}</p>
-                              <p className="text-xs text-slate-500 mt-0.5">{c.publisher} · {c.date}</p>
-                            </div>
-                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${
-                              c.type === "guideline" ? "bg-teal-50 text-teal-700 border border-teal-200" : "bg-slate-100 text-slate-600 border border-slate-200"
-                            }`}>
-                              {c.type === "guideline" ? "Guideline" : "Research"}
-                            </span>
-                          </div>
-                          <p className="text-xs text-slate-600 mt-2 italic">{c.relevanceNote}</p>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </Card>
-              </div>
             )}
           </div>
         )}

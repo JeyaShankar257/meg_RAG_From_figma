@@ -6,7 +6,10 @@ import {
   formatFileSize,
   getPatientUploadedReports,
   REPORT_CATEGORY_LABELS,
+  REPORT_INDEXING_LABELS,
+  setPatientReportIndexingStatus,
 } from "../../lib/patientReports";
+import { getRagService } from "../../lib/rag";
 import Card from "../../components/ui/Card";
 import Badge from "../../components/ui/Badge";
 import Button from "../../components/ui/Button";
@@ -57,6 +60,7 @@ export default function Reports() {
   const [file, setFile] = useState<File | null>(null);
   const [fileInputKey, setFileInputKey] = useState(0);
   const [uploading, setUploading] = useState(false);
+  const [reindexingReportId, setReindexingReportId] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
 
@@ -95,6 +99,7 @@ export default function Reports() {
         fileDataUrl,
         uploadedAt: new Date().toISOString(),
         status: "shared",
+        indexingStatus: "not_indexed",
       };
       const reports = addPatientUploadedReport(report);
       setUploadedReports(reports.filter((item) => item.patientId === PATIENT_ID));
@@ -106,6 +111,24 @@ export default function Reports() {
       setError("The report could not be saved. Try a smaller file.");
     } finally {
       setUploading(false);
+    }
+  };
+
+  const handleRetryIndexing = async (reportId: string) => {
+    setReindexingReportId(reportId);
+    try {
+      await getRagService().reindexReport(reportId);
+      const reports = setPatientReportIndexingStatus(reportId, "indexing");
+      setUploadedReports(reports.filter((item) => item.patientId === PATIENT_ID));
+    } catch {
+      const reports = setPatientReportIndexingStatus(
+        reportId,
+        "failed",
+        "Indexing retry could not be started.",
+      );
+      setUploadedReports(reports.filter((item) => item.patientId === PATIENT_ID));
+    } finally {
+      setReindexingReportId(null);
     }
   };
 
@@ -227,15 +250,40 @@ export default function Reports() {
                       <Badge variant={report.status === "reviewed" ? "success" : "info"}>
                         {report.status === "reviewed" ? "Reviewed by doctor" : "Shared with doctor"}
                       </Badge>
+                      <Badge variant={
+                        report.indexingStatus === "ready"
+                          ? "success"
+                          : report.indexingStatus === "failed"
+                            ? "error"
+                            : report.indexingStatus === "indexing"
+                              ? "warning"
+                              : "default"
+                      }>
+                        {REPORT_INDEXING_LABELS[report.indexingStatus ?? "not_indexed"]}
+                      </Badge>
                     </div>
                     <p className="text-xs text-slate-500 mt-1">
                       {REPORT_CATEGORY_LABELS[report.category]} · Report date {new Date(`${report.reportDate}T00:00:00`).toLocaleDateString()}
                     </p>
                     <p className="text-xs text-slate-400 mt-1">{report.fileName} · {formatFileSize(report.fileSize)}</p>
+                    {report.indexingStatus === "failed" && report.indexingError && (
+                      <p className="text-xs text-rose-600 mt-1">{report.indexingError}</p>
+                    )}
                     {report.note && <p className="text-sm text-slate-600 mt-2">{report.note}</p>}
                   </div>
                 </div>
-                <Button variant="outline" size="sm" onClick={() => openReport(report)}>View Report</Button>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Button variant="outline" size="sm" onClick={() => openReport(report)}>View Report</Button>
+                  {report.indexingStatus === "failed" && (
+                    <Button
+                      size="sm"
+                      loading={reindexingReportId === report.id}
+                      onClick={() => void handleRetryIndexing(report.id)}
+                    >
+                      Retry Indexing
+                    </Button>
+                  )}
+                </div>
               </div>
             </Card>
           ))

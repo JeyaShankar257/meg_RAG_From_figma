@@ -1,12 +1,14 @@
 export class ApiError extends Error {
   status: number;
   requestId?: string;
+  retryable: boolean;
 
-  constructor(message: string, status: number, requestId?: string) {
+  constructor(message: string, status: number, requestId?: string, retryable = false) {
     super(message);
     this.name = "ApiError";
     this.status = status;
     this.requestId = requestId;
+    this.retryable = retryable;
   }
 }
 
@@ -35,7 +37,12 @@ export async function requestJson<ResponseBody>(
 
   if (!response.ok) {
     const message = getErrorMessage(responseBody, response.status);
-    throw new ApiError(message, response.status, requestId);
+    throw new ApiError(
+      message,
+      response.status,
+      requestId,
+      response.status === 408 || response.status === 429 || response.status >= 500,
+    );
   }
 
   return responseBody as ResponseBody;
@@ -58,5 +65,8 @@ function getErrorMessage(responseBody: unknown, status: number): string {
     if (typeof error === "string" && error.trim()) return error;
   }
 
-  return status === 401 ? "Your session has expired. Please sign in again." : "The request could not be completed.";
+  if (status === 401) return "Your session has expired. Please sign in again.";
+  if (status === 403 || status === 404) return "You do not have access to this analysis.";
+  if (status === 429) return "The analysis service is busy. Please try again shortly.";
+  return "The request could not be completed.";
 }

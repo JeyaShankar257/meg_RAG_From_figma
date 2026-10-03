@@ -10,6 +10,17 @@ export const REPORT_CATEGORY_LABELS: Record<PatientUploadedReport["category"], s
   other: "Other",
 };
 
+export const REPORT_INDEXING_LABELS: Record<
+  NonNullable<PatientUploadedReport["indexingStatus"]>,
+  string
+> = {
+  not_indexed: "Demo only · Not indexed",
+  uploaded: "Uploaded",
+  indexing: "Indexing",
+  ready: "Ready for AI analysis",
+  failed: "Indexing failed",
+};
+
 export function getPatientUploadedReports(patientId?: string): PatientUploadedReport[] {
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
@@ -30,6 +41,25 @@ export function markPatientReportReviewed(reportId: string): PatientUploadedRepo
   const reports = getPatientUploadedReports().map((report) =>
     report.id === reportId
       ? { ...report, status: "reviewed" as const, reviewedAt: new Date().toISOString() }
+      : report
+  );
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(reports));
+  return reports;
+}
+
+export function setPatientReportIndexingStatus(
+  reportId: string,
+  indexingStatus: NonNullable<PatientUploadedReport["indexingStatus"]>,
+  indexingError?: string,
+): PatientUploadedReport[] {
+  const reports = getPatientUploadedReports().map((report) =>
+    report.id === reportId
+      ? {
+          ...report,
+          indexingStatus,
+          indexingError,
+          indexedAt: indexingStatus === "ready" ? new Date().toISOString() : report.indexedAt,
+        }
       : report
   );
   localStorage.setItem(STORAGE_KEY, JSON.stringify(reports));

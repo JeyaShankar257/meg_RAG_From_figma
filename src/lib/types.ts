@@ -105,6 +105,8 @@ export interface RetrievedEvidence {
   similarityScore?: number;
 }
 
+export type RagEvidenceStatus = "sufficient" | "limited" | "insufficient" | "conflicting";
+
 export interface RagAnalysisRequest {
   patientId: string;
   symptoms: string;
@@ -117,6 +119,11 @@ export interface RagAnalysisResponse {
   evidence: RetrievedEvidence[];
   analysis?: AIAnalysis;
   error?: string;
+  evidenceStatus?: RagEvidenceStatus;
+  correlationId?: string;
+  retryable?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface AIPrescriptionSuggestion {
@@ -150,6 +157,8 @@ export interface AIAnalysis {
   suggestedMedications?: AIPrescriptionSuggestion[];
   retrievedEvidence?: RetrievedEvidence[];
   ragQueryId?: string;
+  promptVersion?: string;
+  evidenceStatus?: RagEvidenceStatus;
 }
 
 export interface Citation {
@@ -160,6 +169,7 @@ export interface Citation {
   relevanceNote: string;
   type: "guideline" | "research_study" | "other";
   url?: string;
+  evidenceId?: string;
 }
 
 export interface Prescription {
@@ -249,6 +259,9 @@ export interface PatientUploadedReport {
   uploadedAt: string;
   status: "shared" | "reviewed";
   reviewedAt?: string;
+  indexingStatus?: "not_indexed" | "uploaded" | "indexing" | "ready" | "failed";
+  indexingError?: string;
+  indexedAt?: string;
 }
 
 export interface TrustScoreComponent {

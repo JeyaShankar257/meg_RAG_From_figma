@@ -26,7 +26,7 @@ export default function ScoreTrendChart({ data, height = 180 }: ScoreTrendChartP
         <YAxis domain={[50, 100]} tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
         <Tooltip
           contentStyle={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 12 }}
-          formatter={(v: number) => [`${v}`, "Adherence Score"]}
+          formatter={(value) => [`${value ?? ""}`, "Adherence Score"]}
         />
         <Area type="monotone" dataKey="value" stroke="#0d9488" strokeWidth={2} fill="url(#scoreGrad)" dot={{ r: 3, fill: "#0d9488", strokeWidth: 0 }} activeDot={{ r: 5, fill: "#0d9488" }} />
       </AreaChart>
