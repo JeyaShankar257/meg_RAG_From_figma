@@ -86,6 +86,39 @@ export interface HeatmapCell {
   value: number;
 }
 
+export type RagSourceType =
+  | "guideline"
+  | "research"
+  | "patient_visit"
+  | "patient_report"
+  | "medication_reference";
+
+export interface RetrievedEvidence {
+  sourceId: string;
+  chunkId?: string;
+  title: string;
+  sourceType: RagSourceType;
+  publisher?: string;
+  date?: string;
+  excerpt: string;
+  relevanceNote?: string;
+  similarityScore?: number;
+}
+
+export interface RagAnalysisRequest {
+  patientId: string;
+  symptoms: string;
+  question?: string;
+}
+
+export interface RagAnalysisResponse {
+  id: string;
+  status: "pending" | "running" | "complete" | "error";
+  evidence: RetrievedEvidence[];
+  analysis?: AIAnalysis;
+  error?: string;
+}
+
 export interface AIPrescriptionSuggestion {
   name: string;
   genericName: string;
@@ -115,6 +148,8 @@ export interface AIAnalysis {
   createdAt: string;
   reviewed?: boolean;
   suggestedMedications?: AIPrescriptionSuggestion[];
+  retrievedEvidence?: RetrievedEvidence[];
+  ragQueryId?: string;
 }
 
 export interface Citation {
