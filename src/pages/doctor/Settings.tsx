@@ -23,7 +23,7 @@ export default function DoctorSettings() {
         <div className="flex items-center gap-4 mb-5">
           <div className="w-14 h-14 rounded-full bg-teal-600 flex items-center justify-center text-white font-bold text-xl">SC</div>
           <div>
-            <p className="text-sm font-semibold text-slate-900">Dr. Sarah Chen</p>
+            <p className="text-sm font-semibold text-slate-900">Dr. Jeya Shankar M</p>
             <p className="text-xs text-slate-500">Internal Medicine · MedNova Clinic</p>
           </div>
         </div>

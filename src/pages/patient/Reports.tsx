@@ -106,7 +106,7 @@ export default function Reports() {
       setForm({ title: "", category: "blood_test", reportDate: "", note: "" });
       setFile(null);
       setFileInputKey((key) => key + 1);
-      setSuccessMessage("Report uploaded and shared with Dr. Sarah Chen.");
+      setSuccessMessage("Report uploaded and shared with Dr. Jeya Shankar M.");
     } catch {
       setError("The report could not be saved. Try a smaller file.");
     } finally {

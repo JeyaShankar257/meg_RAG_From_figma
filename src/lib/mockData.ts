@@ -18,15 +18,15 @@ import type {
 
 export const DEMO_DOCTOR: Doctor = {
   id: "dr-001",
-  name: "Dr. Sarah Chen",
+  name: "Dr. Jeya Shankar M",
   email: "s.chen@mednova.clinic",
   specialty: "Internal Medicine",
 };
 
 export const DEMO_CARE_TEAM: CareTeamMember[] = [
-  { id: "ct-001", name: "Dr. Sarah Chen", role: "Attending Physician", email: "s.chen@mednova.clinic" },
-  { id: "ct-002", name: "Nurse Priya Nair", role: "Care Coordinator", email: "p.nair@mednova.clinic" },
-  { id: "ct-003", name: "James Okafor", role: "Pharmacist", email: "j.okafor@mednova.clinic" },
+  { id: "ct-001", name: "Dr. Jeya Shankar M", role: "Attending Physician", email: "s.chen@mednova.clinic" },
+  { id: "ct-002", name: "Priya Dharshini", role: "Care Coordinator", email: "p.nair@mednova.clinic" },
+  { id: "ct-003", name: "Parvathi", role: "Pharmacist", email: "j.okafor@mednova.clinic" },
 ];
 
 export const DEMO_PATIENTS: Patient[] = [
@@ -118,7 +118,7 @@ export const DEMO_VISITS: Visit[] = [
     notes: "Patient reports improved energy levels since last dose adjustment. HbA1c down to 7.1% from 7.8% at last visit. Fasting glucose averaging 118 mg/dL. Continuing current metformin regimen with minor titration.",
     proposedSolution: "Increase Metformin to 1000mg BID. Add Jardiance 10mg QD if glucose control doesn't improve in 8 weeks.",
     outcome: "HbA1c improving. Schedule next labs in 6 weeks. Patient advised on dietary modifications.",
-    doctor: "Dr. Sarah Chen",
+    doctor: "Dr. Jeya Shankar M",
     relatedVisits: ["v-002"],
   },
   {
@@ -130,7 +130,7 @@ export const DEMO_VISITS: Visit[] = [
     notes: "BP measured at 142/88 mmHg at clinic. Home readings averaging 138/85 mmHg over the past month. Patient reports occasional headaches in the morning. No visual disturbances. Kidney function normal.",
     proposedSolution: "Continue Lisinopril 10mg. Add Amlodipine 5mg QD to better control BP. Recommend sodium restriction.",
     outcome: "Combination therapy initiated. Follow-up in 4 weeks to assess BP response.",
-    doctor: "Dr. Sarah Chen",
+    doctor: "Dr. Jeya Shankar M",
   },
   {
     id: "v-003",
@@ -141,7 +141,7 @@ export const DEMO_VISITS: Visit[] = [
     notes: "Viral URI, no bacterial indicators. Throat culture negative. Lungs clear on auscultation. Patient's diabetes management was stable through this episode — no significant glucose dysregulation.",
     proposedSolution: "Supportive care: rest, fluids, paracetamol PRN. No antibiotics indicated.",
     outcome: "Symptoms resolved within 7 days per follow-up call. No complications.",
-    doctor: "Dr. Sarah Chen",
+    doctor: "Dr. Jeya Shankar M",
   },
   {
     id: "v-004",
@@ -152,7 +152,7 @@ export const DEMO_VISITS: Visit[] = [
     notes: "Annual comprehensive diabetes review. HbA1c at 7.8% — above target of 7.0%. Signs of early peripheral neuropathy in bilateral feet. No retinopathy on fundus exam. Microalbuminuria borderline at 28 mg/g creatinine.",
     proposedSolution: "Intensify diabetes management. Consider addition of Jardiance for both glucose control and cardiovascular protection. Refer to podiatry for neuropathy assessment.",
     outcome: "Referred to podiatry. Metformin dose titrated upward. Patient counseled on foot care.",
-    doctor: "Dr. Sarah Chen",
+    doctor: "Dr. Jeya Shankar M",
     relatedVisits: ["v-001"],
   },
   {
@@ -164,7 +164,7 @@ export const DEMO_VISITS: Visit[] = [
     notes: "Patient self-referred after noting consistently elevated home BP readings (consistently above 135/85 over 3 weeks). Clinic BP 152/94 mmHg. ECG normal. No secondary causes identified on initial workup. Family history positive (father — hypertension, MI at 58).",
     proposedSolution: "Initiate antihypertensive therapy. Start Lisinopril 5mg QD. DASH diet counseling.",
     outcome: "Lisinopril initiated. BP diary started. Follow-up in 4 weeks.",
-    doctor: "Dr. Sarah Chen",
+    doctor: "Dr. Jeya Shankar M",
     relatedVisits: ["v-002"],
   },
 ];
@@ -291,7 +291,7 @@ export const DEMO_PRESCRIPTIONS: Prescription[] = [
     id: "rx-001",
     status: "active",
     suggestedBy: "doctor",
-    approvedBy: "Dr. Sarah Chen",
+    approvedBy: "Dr. Jeya Shankar M",
     approvedAt: "2026-08-28T10:30:00Z",
     citations: [],
     revisions: [],
@@ -308,7 +308,7 @@ export const DEMO_PRESCRIPTIONS: Prescription[] = [
       startDate: "2026-08-28",
       endDate: "2026-11-26",
       status: "active",
-      prescribedBy: "Dr. Sarah Chen",
+      prescribedBy: "Dr. Jeya Shankar M",
       nextDose: "Today, 7:00 PM",
     },
   },
@@ -316,7 +316,7 @@ export const DEMO_PRESCRIPTIONS: Prescription[] = [
     id: "rx-002",
     status: "active",
     suggestedBy: "ai",
-    approvedBy: "Dr. Sarah Chen",
+    approvedBy: "Dr. Jeya Shankar M",
     approvedAt: "2026-06-15T09:00:00Z",
     citations: [
       {
@@ -331,7 +331,7 @@ export const DEMO_PRESCRIPTIONS: Prescription[] = [
     revisions: [
       {
         id: "rev-001",
-        changedBy: "Dr. Sarah Chen",
+        changedBy: "Dr. Jeya Shankar M",
         changedAt: "2026-06-15T09:15:00Z",
         changes: { strength: { from: "5", to: "10" } },
         reason: "Dose corrected after pharmacist review; 5mg was insufficient for this patient's weight.",
@@ -350,7 +350,7 @@ export const DEMO_PRESCRIPTIONS: Prescription[] = [
       startDate: "2026-06-15",
       endDate: "2026-09-15",
       status: "active",
-      prescribedBy: "Dr. Sarah Chen",
+      prescribedBy: "Dr. Jeya Shankar M",
       nextDose: "Today, 8:00 AM",
     },
   },

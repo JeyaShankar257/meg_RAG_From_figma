@@ -37,7 +37,7 @@ export default function DoctorShell() {
           <div className="flex items-center gap-3 p-2.5 rounded-lg bg-teal-50">
             <div className="w-8 h-8 rounded-full bg-teal-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">SC</div>
             <div className="min-w-0">
-              <div className="text-sm font-semibold text-slate-900 truncate">Dr. Sarah Chen</div>
+              <div className="text-sm font-semibold text-slate-900 truncate">Dr. Jeya Shankar M</div>
               <div className="text-xs text-slate-500">Internal Medicine</div>
             </div>
           </div>

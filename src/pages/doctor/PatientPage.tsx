@@ -3,7 +3,9 @@ import { useParams, useNavigate, Link } from "react-router-dom";
 import type {
   AIAnalysis,
   AIPrescriptionSuggestion,
+  Medication,
   PatientUploadedReport,
+  Prescription,
   RagAnalysisResponse,
 } from "../../lib/types";
 import {
@@ -34,6 +36,9 @@ import AdherenceRing from "../../components/charts/AdherenceRing";
 import ScoreTrendChart from "../../components/charts/ScoreTrendChart";
 import RagAssistantPanel from "../../components/doctor/rag/RagAssistantPanel";
 import PrescriptionSuggestionCard from "../../components/doctor/rag/PrescriptionSuggestionCard";
+import EditablePrescriptionCard, {
+  type EditableMedicationField,
+} from "../../components/doctor/EditablePrescriptionCard";
 
 const TABS = ["Overview", "Visits", "Adherence", "Reports", "AI Assistant", "Prescription"];
 
@@ -44,14 +49,27 @@ export default function PatientPage() {
   const [expandedVisit, setExpandedVisit] = useState<string | null>("v-001");
   const [aiResult, setAiResult] = useState<AIAnalysis | null>(null);
   const [ragResponse, setRagResponse] = useState<RagAnalysisResponse | null>(null);
-  const [prescriptionEdit, setPrescriptionEdit] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
+  const [prescriptions, setPrescriptions] = useState<Prescription[]>(() =>
+    DEMO_PRESCRIPTIONS.map((prescription) => ({
+      ...prescription,
+      medication: { ...prescription.medication },
+      revisions: [...prescription.revisions],
+    }))
+  );
+  const [editingPrescriptionId, setEditingPrescriptionId] = useState<string | null>(null);
+  const [prescriptionDraft, setPrescriptionDraft] = useState<Medication | null>(null);
+  const [prescriptionReason, setPrescriptionReason] = useState("");
+  const [prescriptionEditError, setPrescriptionEditError] = useState("");
+  const [pendingChanges, setPendingChanges] = useState<Record<
+    string,
+    { from: string | number; to: string | number }
+  >>({});
 
   // AI prescription suggestion state
   const [editedMeds, setEditedMeds] = useState<AIPrescriptionSuggestion[]>([]);
   const [expandedMedCitation, setExpandedMedCitation] = useState<Record<number, boolean>>({});
   const [showApprovePreview, setShowApprovePreview] = useState(false);
-  const [approvedPrescriptions, setApprovedPrescriptions] = useState<AIPrescriptionSuggestion[]>([]);
   const [approveToast, setApproveToast] = useState(false);
   const [justApprovedIds, setJustApprovedIds] = useState<Set<string>>(new Set());
 
@@ -73,7 +91,36 @@ export default function PatientPage() {
 
   const handleConfirmApprove = () => {
     setShowApprovePreview(false);
-    setApprovedPrescriptions((prev) => [...editedMeds, ...prev]);
+    const approvedAt = new Date();
+    const newPrescriptions: Prescription[] = editedMeds.map((medication, index) => {
+      const endDate = new Date(approvedAt);
+      endDate.setDate(endDate.getDate() + medication.days);
+      return {
+        id: `rx-ai-${approvedAt.getTime()}-${index}`,
+        status: "active",
+        suggestedBy: "ai",
+        approvedBy: "Dr. Jeya Shankar M",
+        approvedAt: approvedAt.toISOString(),
+        citations: medication.citations,
+        revisions: [],
+        medication: {
+          id: `med-ai-${approvedAt.getTime()}-${index}`,
+          name: medication.name,
+          genericName: medication.genericName,
+          strength: medication.strength,
+          unit: medication.unit,
+          frequency: medication.frequency,
+          quantity: medication.quantity,
+          duration: `${medication.days} days`,
+          instructions: medication.instructions,
+          startDate: approvedAt.toISOString().slice(0, 10),
+          endDate: endDate.toISOString().slice(0, 10),
+          status: "active",
+          prescribedBy: "Dr. Jeya Shankar M",
+        },
+      };
+    });
+    setPrescriptions((previous) => [...newPrescriptions, ...previous]);
     const newIds = new Set(editedMeds.map((m) => m.name));
     setJustApprovedIds(newIds);
     sessionStorage.setItem("pipeline_triggered", "true");
@@ -81,6 +128,107 @@ export default function PatientPage() {
     setTimeout(() => setApproveToast(false), 4000);
     setTimeout(() => setJustApprovedIds(new Set()), 3500);
     setActiveTab("Prescription");
+  };
+
+  const handleStartPrescriptionEdit = (prescription: Prescription) => {
+    setEditingPrescriptionId(prescription.id);
+    setPrescriptionDraft({ ...prescription.medication });
+    setPrescriptionReason("");
+    setPrescriptionEditError("");
+    setPendingChanges({});
+  };
+
+  const handleCancelPrescriptionEdit = () => {
+    setEditingPrescriptionId(null);
+    setPrescriptionDraft(null);
+    setPrescriptionReason("");
+    setPrescriptionEditError("");
+    setPendingChanges({});
+    setShowConfirm(false);
+  };
+
+  const handlePrescriptionDraftChange = (
+    field: EditableMedicationField,
+    value: string | number,
+  ) => {
+    setPrescriptionDraft((previous) => previous ? { ...previous, [field]: value } : previous);
+    setPrescriptionEditError("");
+  };
+
+  const handleReviewPrescriptionChanges = () => {
+    const original = prescriptions.find((prescription) => prescription.id === editingPrescriptionId);
+    if (!original || !prescriptionDraft) return;
+    if (
+      !prescriptionDraft.name.trim() ||
+      !prescriptionDraft.genericName.trim() ||
+      !prescriptionDraft.strength.trim() ||
+      !prescriptionDraft.unit.trim() ||
+      !prescriptionDraft.frequency.trim() ||
+      prescriptionDraft.quantity < 1 ||
+      !prescriptionDraft.duration.trim() ||
+      !prescriptionDraft.instructions.trim()
+    ) {
+      setPrescriptionEditError("Complete every prescription field before continuing.");
+      return;
+    }
+    if (!prescriptionReason.trim()) {
+      setPrescriptionEditError("Document a reason for this prescription change.");
+      return;
+    }
+
+    const fields: EditableMedicationField[] = [
+      "name",
+      "genericName",
+      "strength",
+      "unit",
+      "frequency",
+      "quantity",
+      "duration",
+      "instructions",
+    ];
+    const changes = fields.reduce<Record<string, { from: string | number; to: string | number }>>(
+      (result, field) => {
+        if (original.medication[field] !== prescriptionDraft[field]) {
+          result[field] = {
+            from: original.medication[field],
+            to: prescriptionDraft[field],
+          };
+        }
+        return result;
+      },
+      {},
+    );
+
+    if (Object.keys(changes).length === 0) {
+      setPrescriptionEditError("Change at least one prescription field before continuing.");
+      return;
+    }
+    setPendingChanges(changes);
+    setShowConfirm(true);
+  };
+
+  const handleConfirmPrescriptionChanges = () => {
+    if (!editingPrescriptionId || !prescriptionDraft) return;
+    const changedAt = new Date().toISOString();
+    setPrescriptions((previous) => previous.map((prescription) =>
+      prescription.id === editingPrescriptionId
+        ? {
+            ...prescription,
+            medication: { ...prescriptionDraft },
+            revisions: [
+              ...prescription.revisions,
+              {
+                id: `revision-${Date.now()}`,
+                changedBy: "Dr. Jeya Shankar M",
+                changedAt,
+                changes: pendingChanges,
+                reason: prescriptionReason.trim(),
+              },
+            ],
+          }
+        : prescription
+    ));
+    handleCancelPrescriptionEdit();
   };
 
   const handleViewReport = (report: PatientUploadedReport) => {
@@ -198,10 +346,16 @@ export default function PatientPage() {
                 <AdherenceRing score={patient.adherenceScore} size={100} />
                 <div className="space-y-2 text-sm">
                   {[
-                    { label: "Taken", count: DEMO_ADHERENCE.taken, color: "text-emerald-600" },
-                    { label: "Late", count: DEMO_ADHERENCE.late, color: "text-amber-600" },
-                    { label: "Skipped", count: DEMO_ADHERENCE.skipped, color: "text-slate-500" },
-                    { label: "Missed", count: DEMO_ADHERENCE.missed, color: "text-rose-600" },
+                    {
+                      label: "Taken",
+                      count: DEMO_ADHERENCE.taken + DEMO_ADHERENCE.late,
+                      color: "text-emerald-600",
+                    },
+                    {
+                      label: "Missed",
+                      count: DEMO_ADHERENCE.missed + DEMO_ADHERENCE.skipped,
+                      color: "text-rose-600",
+                    },
                   ].map((s) => (
                     <div key={s.label} className="flex items-center justify-between gap-6">
                       <span className="text-slate-500">{s.label}</span>
@@ -218,7 +372,7 @@ export default function PatientPage() {
                 <CardTitle>Active Medications</CardTitle>
               </CardHeader>
               <div className="space-y-3">
-                {DEMO_PRESCRIPTIONS.filter((p) => p.status === "active").map((rx) => (
+                {prescriptions.filter((prescription) => prescription.status === "active").map((rx) => (
                   <div key={rx.id} className="flex items-start gap-2">
                     <div className="w-2 h-2 rounded-full bg-teal-500 mt-1.5 flex-shrink-0" />
                     <div>
@@ -338,12 +492,18 @@ export default function PatientPage() {
         {/* ADHERENCE TAB */}
         {activeTab === "Adherence" && (
           <div className="space-y-5 animate-fade-in">
-            <div className="grid sm:grid-cols-4 gap-4">
+            <div className="grid sm:grid-cols-2 gap-4">
               {[
-                { label: "Taken on time", value: DEMO_ADHERENCE.taken, color: "emerald" },
-                { label: "Taken late", value: DEMO_ADHERENCE.late, color: "amber" },
-                { label: "Skipped", value: DEMO_ADHERENCE.skipped, color: "slate" },
-                { label: "Missed", value: DEMO_ADHERENCE.missed, color: "rose" },
+                {
+                  label: "Taken",
+                  value: DEMO_ADHERENCE.taken + DEMO_ADHERENCE.late,
+                  color: "emerald",
+                },
+                {
+                  label: "Missed",
+                  value: DEMO_ADHERENCE.missed + DEMO_ADHERENCE.skipped,
+                  color: "rose",
+                },
               ].map((s) => (
                 <Card key={s.label} padding="md">
                   <div className={`text-2xl font-bold text-${s.color}-600 mb-0.5`}>{s.value}</div>
@@ -519,7 +679,7 @@ export default function PatientPage() {
               patientId={patient.id}
               patientContext={[
                 ...patient.conditions,
-                ...DEMO_PRESCRIPTIONS
+                ...prescriptions
                   .filter((prescription) => prescription.status === "active")
                   .slice(0, 2)
                   .map((prescription) => `${prescription.medication.name} ${prescription.medication.strength}${prescription.medication.unit}`),
@@ -553,129 +713,76 @@ export default function PatientPage() {
         {/* PRESCRIPTION TAB */}
         {activeTab === "Prescription" && (
           <div className="space-y-5 animate-fade-in">
-            {/* AI-approved prescriptions appear at the top */}
-            {approvedPrescriptions.map((med) => (
-              <Card key={`approved-${med.name}`} padding="md" className={`border-2 transition-all duration-700 ${justApprovedIds.has(med.name) ? "border-emerald-400 bg-emerald-50/30" : "border-transparent"}`}>
-                <div className="flex items-start justify-between gap-4 mb-4">
-                  <div>
-                    <div className="flex items-center gap-2 flex-wrap mb-1">
-                      <h3 className="text-sm font-semibold text-slate-900">{med.name}</h3>
-                      <StatusPill status="active" />
-                      <Badge variant="ai">AI Suggested</Badge>
-                      <span className="text-xs bg-emerald-100 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full font-medium">Doctor Approved</span>
-                      {justApprovedIds.has(med.name) && (
-                        <span className="text-xs bg-emerald-500 text-white px-2 py-0.5 rounded-full font-medium animate-fade-in">Just approved ✓</span>
-                      )}
-                    </div>
-                    <p className="text-xs text-slate-500">{med.genericName} · {med.strength}{med.unit} · {med.frequency}</p>
-                  </div>
-                </div>
-                <div className="grid sm:grid-cols-2 gap-3 mb-4">
-                  {[
-                    { label: "Quantity", value: `${med.quantity} tablets` },
-                    { label: "Duration", value: `${med.days} days` },
-                    { label: "Prescribed by", value: "Dr. Sarah Chen" },
-                    { label: "Approved at", value: new Date().toLocaleDateString() },
-                  ].map((f) => (
-                    <div key={f.label} className="bg-slate-50 rounded-lg px-3 py-2.5 border border-slate-100">
-                      <div className="text-xs text-slate-400 mb-0.5">{f.label}</div>
-                      <div className="text-sm font-medium text-slate-800">{f.value}</div>
-                    </div>
-                  ))}
-                </div>
-                <div className="bg-slate-50 rounded-lg px-3 py-2.5 border border-slate-100">
-                  <div className="text-xs text-slate-400 mb-0.5">Instructions</div>
-                  <div className="text-sm text-slate-700">{med.instructions}</div>
-                </div>
-              </Card>
+            <div className="flex items-start justify-between gap-4 flex-wrap">
+              <div>
+                <p className="text-base font-semibold text-slate-900">Active Prescriptions</p>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Edit one prescription at a time. Every confirmed change creates a revision record.
+                </p>
+              </div>
+              <Badge variant="default">{prescriptions.length} prescriptions</Badge>
+            </div>
+
+            {prescriptions.map((prescription) => (
+              <EditablePrescriptionCard
+                key={prescription.id}
+                prescription={prescription}
+                isEditing={editingPrescriptionId === prescription.id}
+                draft={editingPrescriptionId === prescription.id ? prescriptionDraft : null}
+                reason={editingPrescriptionId === prescription.id ? prescriptionReason : ""}
+                error={editingPrescriptionId === prescription.id ? prescriptionEditError : ""}
+                highlighted={justApprovedIds.has(prescription.medication.name)}
+                onStartEditing={() => handleStartPrescriptionEdit(prescription)}
+                onCancelEditing={handleCancelPrescriptionEdit}
+                onDraftChange={handlePrescriptionDraftChange}
+                onReasonChange={(reason) => {
+                  setPrescriptionReason(reason);
+                  setPrescriptionEditError("");
+                }}
+                onReviewChanges={handleReviewPrescriptionChanges}
+              />
             ))}
 
-            {DEMO_PRESCRIPTIONS.map((rx) => (
-              <Card key={rx.id} padding="md">
-                <div className="flex items-start justify-between gap-4 mb-4">
-                  <div>
-                    <div className="flex items-center gap-2 flex-wrap mb-1">
-                      <h3 className="text-sm font-semibold text-slate-900">{rx.medication.name}</h3>
-                      <StatusPill status="active" />
-                      {rx.suggestedBy === "ai" && <Badge variant="ai">AI suggested</Badge>}
-                    </div>
-                    <p className="text-xs text-slate-500">{rx.medication.genericName} · {rx.medication.strength}{rx.medication.unit} · {rx.medication.frequency}</p>
-                  </div>
-                  <Button size="sm" variant={prescriptionEdit ? "success" : "outline"} onClick={() => {
-                    if (prescriptionEdit) setShowConfirm(true);
-                    else setPrescriptionEdit(true);
-                  }}>
-                    {prescriptionEdit ? "Save Changes" : "Edit"}
-                  </Button>
-                </div>
+            {showConfirm && prescriptionDraft && (
+              <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-lg w-full animate-slide-in-up max-h-[90vh] overflow-y-auto">
+                  <p className="text-base font-semibold text-slate-900">Confirm Prescription Change</p>
+                  <p className="text-sm text-slate-600 mt-1 mb-4">
+                    Review the updated values before saving. The original prescription will remain in revision history.
+                  </p>
 
-                <div className="grid sm:grid-cols-2 gap-3 mb-4">
-                  {[
-                    { label: "Quantity", value: `${rx.medication.quantity} tablets` },
-                    { label: "Duration", value: rx.medication.duration },
-                    { label: "Start", value: rx.medication.startDate },
-                    { label: "End", value: rx.medication.endDate },
-                  ].map((f) => (
-                    <div key={f.label} className="bg-slate-50 rounded-lg px-3 py-2.5 border border-slate-100">
-                      <div className="text-xs text-slate-400 mb-0.5">{f.label}</div>
-                      <div className="text-sm font-medium text-slate-800">{f.value}</div>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="bg-slate-50 rounded-lg px-3 py-2.5 border border-slate-100 mb-3">
-                  <div className="text-xs text-slate-400 mb-0.5">Instructions</div>
-                  <div className="text-sm text-slate-700">{rx.medication.instructions}</div>
-                </div>
-
-                {/* Evidence section */}
-                {rx.citations.length > 0 && (
-                  <details className="border border-teal-100 rounded-xl overflow-hidden">
-                    <summary className="px-4 py-3 cursor-pointer bg-teal-50 text-sm font-medium text-teal-700 flex items-center gap-2 list-none">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width={14} height={14}><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                      Evidence for this suggestion ({rx.citations.length} citation{rx.citations.length > 1 ? "s" : ""})
-                    </summary>
-                    <div className="p-4 space-y-3">
-                      {rx.citations.map((c) => (
-                        <div key={c.id} className="text-sm">
-                          <div className="flex items-start justify-between gap-2">
-                            <span className="font-medium text-slate-800">{c.title}</span>
-                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${
-                              c.type === "guideline" ? "bg-teal-50 text-teal-700 border border-teal-200" : "bg-slate-100 text-slate-600"
-                            }`}>{c.type === "guideline" ? "Guideline" : "Research"}</span>
+                  <div className="space-y-2 mb-4">
+                    {Object.entries(pendingChanges).map(([field, change]) => (
+                      <div key={field} className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                          {field.replace(/([A-Z])/g, " $1")}
+                        </p>
+                        <div className="grid grid-cols-2 gap-3 mt-1 text-sm">
+                          <div>
+                            <span className="text-xs text-slate-400">Previous</span>
+                            <p className="text-slate-600 line-through">{change.from}</p>
                           </div>
-                          <p className="text-xs text-slate-500 mt-0.5">{c.publisher} · {c.date}</p>
-                          <p className="text-xs text-slate-600 italic mt-1">{c.relevanceNote}</p>
+                          <div>
+                            <span className="text-xs text-slate-400">Updated</span>
+                            <p className="font-semibold text-teal-700">{change.to}</p>
+                          </div>
                         </div>
-                      ))}
-                    </div>
-                  </details>
-                )}
-
-                {/* Revisions */}
-                {rx.revisions.length > 0 && (
-                  <div className="mt-3 border-t border-slate-100 pt-3">
-                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Revision History</p>
-                    {rx.revisions.map((r) => (
-                      <div key={r.id} className="text-xs text-slate-500 flex items-start gap-2">
-                        <span className="text-slate-300">·</span>
-                        <span>{r.changedAt} — {r.changedBy}: {r.reason}</span>
                       </div>
                     ))}
                   </div>
-                )}
-              </Card>
-            ))}
 
-            {/* Confirm modal */}
-            {showConfirm && (
-              <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-sm w-full animate-slide-in-up">
-                  <h3 className="text-base font-semibold text-slate-900 mb-2">Confirm Prescription Change</h3>
-                  <p className="text-sm text-slate-600 mb-5">Review and confirm the changes before saving. This action will create a revision record.</p>
+                  <div className="rounded-lg border border-amber-100 bg-amber-50 px-3 py-2 mb-5">
+                    <p className="text-xs font-semibold text-amber-700">Reason for change</p>
+                    <p className="text-sm text-amber-800 mt-0.5">{prescriptionReason}</p>
+                  </div>
+
                   <div className="flex gap-3">
-                    <Button fullWidth variant="secondary" onClick={() => { setShowConfirm(false); setPrescriptionEdit(false); }}>Cancel</Button>
-                    <Button fullWidth onClick={() => { setShowConfirm(false); setPrescriptionEdit(false); }}>Confirm & Save</Button>
+                    <Button fullWidth variant="secondary" onClick={() => setShowConfirm(false)}>
+                      Back to Editing
+                    </Button>
+                    <Button fullWidth variant="success" onClick={handleConfirmPrescriptionChanges}>
+                      Confirm &amp; Save
+                    </Button>
                   </div>
                 </div>
               </div>

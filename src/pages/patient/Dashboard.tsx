@@ -132,7 +132,7 @@ export default function PatientDashboard() {
         <div className="flex items-start gap-3">
           <div className="w-8 h-8 rounded-full bg-cyan-200 flex items-center justify-center text-cyan-700 font-bold text-xs flex-shrink-0">SC</div>
           <div>
-            <p className="text-xs text-cyan-600 font-medium mb-1">Dr. Sarah Chen · Care Team Message</p>
+            <p className="text-xs text-cyan-600 font-medium mb-1">Dr. Jeya Shankar M · Care Team Message</p>
             <p className="text-sm text-cyan-900">Your HbA1c is trending down — great progress with your medication routine. Keep logging your afternoon dose on time!</p>
           </div>
         </div>

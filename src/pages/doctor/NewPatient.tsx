@@ -12,7 +12,7 @@ export default function NewPatient() {
     firstName: "", lastName: "", email: "", phone: "",
     dob: "", gender: "", address: "", guardianName: "",
     guardianPhone: "", guardianEmail: "", conditions: "",
-    assignedDoctor: "Dr. Sarah Chen", careTeamNotes: "", consent: false,
+    assignedDoctor: "Dr. Jeya Shankar M", careTeamNotes: "", consent: false,
   });
 
   const generatedId = "PT-00268";
@@ -104,7 +104,7 @@ export default function NewPatient() {
           <Button variant="secondary" fullWidth onClick={() => navigate("/doctor")}>
             Back to Dashboard
           </Button>
-          <Button fullWidth onClick={() => { setStep("form"); setForm({ firstName: "", lastName: "", email: "", phone: "", dob: "", gender: "", address: "", guardianName: "", guardianPhone: "", guardianEmail: "", conditions: "", assignedDoctor: "Dr. Sarah Chen", careTeamNotes: "", consent: false }); }}>
+          <Button fullWidth onClick={() => { setStep("form"); setForm({ firstName: "", lastName: "", email: "", phone: "", dob: "", gender: "", address: "", guardianName: "", guardianPhone: "", guardianEmail: "", conditions: "", assignedDoctor: "Dr. Jeya Shankar M", careTeamNotes: "", consent: false }); }}>
             Add Another Patient
           </Button>
         </div>
@@ -234,7 +234,7 @@ export default function NewPatient() {
               value={form.assignedDoctor}
               onChange={(e) => setForm({ ...form, assignedDoctor: e.target.value })}
               options={[
-                { value: "Dr. Sarah Chen", label: "Dr. Sarah Chen — Internal Medicine" },
+                { value: "Dr. Jeya Shankar M", label: "Dr. Jeya Shankar M — Internal Medicine" },
               ]}
             />
           </div>

@@ -51,14 +51,17 @@ export default function PrescriptionSuggestionCard({
 
             <div className="grid sm:grid-cols-2 gap-3 mb-3">
               {[
-                { label: "Strength", field: "strength" as const, suffix: medication.unit, type: "text" },
-                { label: "Frequency", field: "frequency" as const, suffix: "", type: "text" },
-                { label: "Quantity (tablets)", field: "quantity" as const, suffix: "", type: "number" },
-                { label: "Days", field: "days" as const, suffix: "", type: "number" },
-              ].map(({ label, field, suffix, type }) => (
+                { label: "Medicine name", field: "name" as const, type: "text" },
+                { label: "Generic name", field: "genericName" as const, type: "text" },
+                { label: "Strength", field: "strength" as const, type: "text" },
+                { label: "Unit", field: "unit" as const, type: "text" },
+                { label: "Frequency", field: "frequency" as const, type: "text" },
+                { label: "Quantity (tablets)", field: "quantity" as const, type: "number" },
+                { label: "Days", field: "days" as const, type: "number" },
+              ].map(({ label, field, type }) => (
                 <Input
                   key={field}
-                  label={`${label}${suffix ? ` (${suffix})` : ""}`}
+                  label={label}
                   type={type}
                   value={medication[field] as string | number}
                   onChange={(event) => onFieldChange(

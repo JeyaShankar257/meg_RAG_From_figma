@@ -5,21 +5,25 @@ interface DoseHeatmapProps {
   data: HeatmapCell[];
 }
 
-const statusColors = {
+type DisplayStatus = "taken" | "missed" | "none";
+
+const statusColors: Record<DisplayStatus, string> = {
   taken: "#10b981",
-  late: "#f59e0b",
-  skipped: "#94a3b8",
   missed: "#e11d48",
   none: "#f1f5f9",
 };
 
-const statusLabels = {
-  taken: "Taken on time",
-  late: "Taken late",
-  skipped: "Skipped",
+const statusLabels: Record<DisplayStatus, string> = {
+  taken: "Taken",
   missed: "Missed",
   none: "No dose",
 };
+
+function getDisplayStatus(status: HeatmapCell["status"]): DisplayStatus {
+  if (status === "taken" || status === "late") return "taken";
+  if (status === "missed" || status === "skipped") return "missed";
+  return "none";
+}
 
 function formatDate(dateStr: string) {
   const d = new Date(dateStr);
@@ -44,7 +48,7 @@ export default function DoseHeatmap({ data }: DoseHeatmapProps) {
               <div
                 key={di}
                 className="w-4 h-4 rounded-sm cursor-pointer transition-transform hover:scale-125 hover:z-10 relative"
-                style={{ backgroundColor: statusColors[cell.status] }}
+                style={{ backgroundColor: statusColors[getDisplayStatus(cell.status)] }}
                 onMouseEnter={(e) => {
                   const rect = e.currentTarget.getBoundingClientRect();
                   setTooltip({ x: rect.left, y: rect.top, cell });
@@ -58,7 +62,7 @@ export default function DoseHeatmap({ data }: DoseHeatmapProps) {
 
       {/* Legend */}
       <div className="flex items-center gap-4 mt-3 flex-wrap">
-        {(["taken", "late", "skipped", "missed"] as const).map((s) => (
+        {(["taken", "missed"] as const).map((s) => (
           <span key={s} className="flex items-center gap-1.5 text-xs text-slate-600">
             <span className="w-3 h-3 rounded-sm inline-block" style={{ backgroundColor: statusColors[s] }} />
             {statusLabels[s]}
@@ -73,7 +77,7 @@ export default function DoseHeatmap({ data }: DoseHeatmapProps) {
           style={{ left: tooltip.x + 20, top: tooltip.y - 10 }}
         >
           <div className="font-medium">{formatDate(tooltip.cell.date)}</div>
-          <div className="text-slate-300">{statusLabels[tooltip.cell.status]}</div>
+          <div className="text-slate-300">{statusLabels[getDisplayStatus(tooltip.cell.status)]}</div>
         </div>
       )}
     </div>

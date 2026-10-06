@@ -23,8 +23,7 @@ export default function RagAssistantPanel({
   initialResponse,
   onComplete,
 }: RagAssistantPanelProps) {
-  const [symptoms, setSymptoms] = useState("");
-  const [question, setQuestion] = useState("");
+  const [query, setQuery] = useState("");
   const { response, error, runAnalysis, retry, isProcessing } =
     usePatientRagAnalysis(patientId, initialResponse);
   const completedId = useRef<string | null>(initialResponse?.status === "complete" ? initialResponse.id : null);
@@ -39,7 +38,7 @@ export default function RagAssistantPanel({
 
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault();
-    void runAnalysis({ symptoms, question: question || undefined });
+    void runAnalysis({ symptoms: "", question: query });
   };
 
   return (
@@ -74,19 +73,12 @@ export default function RagAssistantPanel({
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <Textarea
-            label="Symptoms / observations"
-            value={symptoms}
-            onChange={(event) => setSymptoms(event.target.value)}
-            placeholder="Describe current symptoms, recent changes, or clinical observations…"
-            rows={3}
-            disabled={isProcessing}
-          />
-          <Textarea
-            label="Clinical question (optional)"
-            value={question}
-            onChange={(event) => setQuestion(event.target.value)}
-            placeholder="What should the evidence-grounded analysis help you evaluate?"
-            rows={2}
+            label="Ask AI with RAG"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Describe symptoms, observations, or ask a clinical question…"
+            hint="This single prompt is used to retrieve authorized evidence and generate the advisory AI analysis."
+            rows={4}
             disabled={isProcessing}
           />
           <div className="flex items-center justify-between gap-4 flex-wrap">
@@ -96,10 +88,10 @@ export default function RagAssistantPanel({
             <Button
               type="submit"
               loading={isProcessing}
-              disabled={!symptoms.trim() && !question.trim()}
+              disabled={!query.trim()}
               className="w-full sm:w-auto"
             >
-              Run Evidence-Grounded Analysis
+              Ask AI with RAG
             </Button>
           </div>
         </form>
