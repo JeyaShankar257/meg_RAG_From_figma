@@ -27,18 +27,18 @@
 
 - [ ] 4.1 Implement authorized patient-context assembly from symptoms, question, visits, medications, adherence, reports, consent, and workspace scope; verify the context excludes unauthorized or revoked records.
 - [ ] 4.2 Implement query embedding, authorization-aware vector retrieval, evidence ranking, similarity thresholding, and persisted RAG query/results; verify each result stores source IDs, excerpts, rank, score, and retrieval configuration.
-- [ ] 4.3 Implement the server-side Gemini adapter, prompt construction, untrusted-evidence delimiters, and strict response schema validation; verify valid output is accepted and malformed output becomes an error or needs-review state.
+- [ ] 4.3 Implement the Python agent workflow service, Gemini adapter, prompt construction, untrusted-evidence delimiters, and strict response schema validation; verify valid output is accepted and malformed output becomes an error or needs-review state.
 - [ ] 4.4 Implement `POST /doctor/patients/:patientId/ai-analyses`, `GET /doctor/ai-analyses/:analysisId`, `GET /doctor/ai-analyses/:analysisId/evidence`, and `POST /reports/:reportId/reindex`; verify authentication, authorization, validation, correlation IDs, and safe error responses.
-- [ ] 4.5 Persist the question, patient-context snapshot, retrieved evidence, prompt/model versions, Gemini output, confidence, safety flags, citations, status transitions, and doctor-review state; verify audit records never contain provider secrets.
+- [ ] 4.5 Persist the question, patient-context snapshot, retrieved evidence, versioned agent job/result envelope, prompt/model versions, Gemini output, confidence, safety flags, citations, status transitions, and doctor-review state; verify audit records never contain provider secrets.
 - [ ] 4.6 Ensure AI medication suggestions remain advisory and cannot activate prescriptions; verify only the existing authenticated doctor approval transaction can create an active prescription.
 - [ ] 4.7 Add API and worker tests for retrieval ranking, patient isolation, weak evidence, conflicting sources, Gemini timeout, invalid output, prompt injection text, retries, and duplicate analysis jobs; verify all tests use isolated fixtures.
 
 ## 5. Patient Page AI Assistant Integration
 
-- [ ] 5.1 Replace the simulated `setTimeout` analysis in `src/pages/doctor/PatientPage.tsx` with the typed RAG API request; verify the page shows pending/running/complete/error states without silently using static analysis in backend mode.
-- [ ] 5.2 Add a collapsed `Retrieved Evidence` section between analysis loading and the AI result; verify each source renders title, type, metadata, excerpt, relevance, and citation information.
-- [ ] 5.3 Replace static research citations with persisted RAG evidence while preserving the existing citation expansion behavior; verify opening a citation does not mutate clinical records.
-- [ ] 5.4 Preserve and connect the existing AI prescription suggestion review flow to the stored analysis; verify AI suggestions are labeled, require confirmation, and trigger no prescription activation before doctor approval.
+- [x] 5.1 Replace the simulated `setTimeout` analysis in `src/pages/doctor/PatientPage.tsx` with the typed RAG API request; verify the page shows pending/running/complete/error states without silently using static analysis in backend mode.
+- [x] 5.2 Add a collapsed `Retrieved Evidence` section between analysis loading and the AI result; verify each source renders title, type, metadata, excerpt, relevance, and citation information.
+- [x] 5.3 Replace static research citations with persisted RAG evidence while preserving the existing citation expansion behavior; verify opening a citation does not mutate clinical records.
+- [x] 5.4 Preserve and connect the existing AI prescription suggestion review flow to the stored analysis; verify AI suggestions are labeled, require confirmation, and trigger no prescription activation before doctor approval.
 - [ ] 5.5 Replace report localStorage behavior with backend report metadata and indexing status when backend mode is enabled; verify upload, indexing, searchable, failure, and retry states render correctly.
 - [ ] 5.6 Add loading, empty, unauthorized, insufficient-evidence, stale-data, recoverable-error, and retry UI states; verify the user can distinguish no evidence from a failed analysis.
 - [ ] 5.7 Add frontend component tests for evidence rendering, analysis polling, error recovery, citation expansion, report status, and prescription approval boundaries; verify the frontend build succeeds.

@@ -13,7 +13,7 @@ This change depends on the authentication, API, storage, worker, and audit found
 - Retrieve authorized evidence from curated clinical sources and patient-scoped records.
 - Add Postgres/pgvector storage for knowledge sources, chunks, retrieval queries, results, and document-indexing jobs.
 - Add asynchronous indexing for patient-uploaded reports, including extraction, chunking, embeddings, and indexing status.
-- Add a server-side Gemini adapter that receives the patient context and retrieved evidence and returns validated structured analysis.
+- Add a Python agent workflow service behind the TypeScript API that receives the authorized patient context and retrieved evidence, orchestrates Gemini, and returns validated structured analysis.
 - Display a collapsed `Retrieved Evidence` section with source metadata, excerpts, relevance, and citations before the AI result.
 - Persist retrieval provenance, prompt/model versions, input snapshots, AI output, safety flags, and doctor review state.
 - Add authorization, prompt-injection, retry, duplicate-job, and AI failure handling.
@@ -32,7 +32,7 @@ This change depends on the authentication, API, storage, worker, and audit found
 ## Impact
 
 - Frontend: `src/lib/types.ts`, `src/pages/doctor/PatientPage.tsx`, the future typed API client, citation rendering, report indexing status, and frontend tests.
-- Backend: `apps/api`, `apps/worker`, Gemini integration, authorization-aware retrieval, Postgres/pgvector migrations, report text extraction, embeddings, audit records, and retryable jobs.
+- Backend: `apps/api`, `apps/worker`, `apps/agents`, Gemini integration, authorization-aware retrieval, Postgres/pgvector migrations, report text extraction, embeddings, audit records, and retryable jobs.
 - Data: new knowledge-source, knowledge-chunk, RAG-query, RAG-result, and indexing-job records; private report files remain in protected storage.
 - Dependencies: pgvector, an embedding provider compatible with the selected Gemini setup, Gemini server credentials, document extraction tooling, and backend test infrastructure.
 - Security: all patient retrieval is server-side and scope-filtered; retrieved text is treated as untrusted evidence; no browser secrets or unrestricted cross-patient search are allowed.

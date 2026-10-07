@@ -2,33 +2,81 @@ schema: spec-driven
 githubCopilot:
   cloudAgent: true
 
-# Project context (optional)
-# This is shown to AI when creating artifacts.
-# Add your tech stack, conventions, style guides, domain knowledge, etc.
-# Example:
-#   context: |
-#     Tech stack: TypeScript, React, Node.js
-#     We use conventional commits
-#     Domain: e-commerce platform
+# Project context (shown to AI when creating OpenSpec artifacts)
+context: |
+  Project: MedNova — a clinical medication adherence platform, currently in
+  frontend-only / demo mode. All data is in-memory mock objects; persistent
+  backend and authentication are planned but not yet implemented.
 
-# Per-artifact rules (optional)
-# Add custom rules for specific artifacts.
-# Example:
-#   rules:
-#     proposal:
-#       - Keep proposals under 500 words
-#       - Always include a "Non-goals" section
-#     tasks:
-#       - Break tasks into chunks of max 2 hours
+  Domain:
+  - Two portals: Doctor (monitoring, prescriptions, AI review) and Patient
+    (dose logging, reports, transparency, visits).
+  - Clinical safety boundary: AI and RAG outputs are advisory only;
+    prescriptions require explicit doctor approval.
+  - Audit is a first-class concern for every clinical action.
 
-# Per-operation guidance (optional)
-# Add advisory guidance for how apply and archive work should be conducted.
-# This is separate from artifact rules above.
-# Example:
-#   operations:
-#     apply:
-#       guidance:
-#         - Keep test summaries concise
-#     archive:
-#       guidance:
-#         - Summarize the archive outcome before finishing
+  Tech stack:
+  - Frontend: React 19, React Router v7, Vite 8, TypeScript 5.7, Tailwind CSS v4
+  - Styling via @tailwindcss/vite plugin; no PostCSS config needed.
+  - Charting: Recharts 3. Formatting: oxfmt.
+  - Package manager: pnpm (pnpm-lock.yaml is canonical).
+  - Build alias: @ → src/
+
+  Source layout:
+  - src/App.tsx               – router root (doctor + patient portals)
+  - src/pages/doctor/         – Dashboard, PatientPage, CareTeamPage,
+                                NewPatient, Settings, Login
+  - src/pages/patient/        – Dashboard, DoseCenter, Visits, Transparency,
+                                Reports, Settings, Login
+  - src/components/doctor/    – DoctorShell and doctor UI components
+  - src/components/patient/   – PatientShell and patient UI components
+  - src/lib/types.ts          – shared domain types
+  - src/lib/mockData.ts       – in-memory demo data (to be replaced by API)
+  - src/lib/patientReports.ts – report helpers
+  - src/lib/rag/              – RAG client stubs
+  - src/lib/api/              – API client stubs
+
+  Planned backend layers (in-flight changes):
+  - setup-backend-infrastructure: Supabase auth, Postgres RLS, TypeScript API
+    service (apps/api), Python agent service (apps/agents), background worker
+    (apps/worker), migrations, seed data.
+  - add-rag-ai-assistant: pgvector knowledge store, async report indexing,
+    Gemini-based analysis, citation rendering, retrieval provenance.
+
+  Conventions:
+  - Components exported as default exports.
+  - Double quotes for strings with apostrophes; escape in single-quoted strings.
+  - JSX tags must be closed and braces balanced.
+  - No direct privileged clinical mutations from the browser.
+  - Server secrets (AI keys, email) stay server-side only.
+  - Conventional commits (feat, fix, chore, docs, refactor, test).
+
+# Per-artifact rules
+rules:
+  proposal:
+    - Keep Why and What Changes concise; bullets preferred over prose.
+    - Always list affected layers (Frontend / Backend / Data / Security / Compatibility).
+    - Prescriptions and clinical mutations must stay server-side; state this in Impact.
+    - If the change depends on another in-flight change, name it explicitly in Why.
+  design:
+    - Lead with the primary data flow or component interaction diagram.
+    - Call out authorization and audit boundaries explicitly.
+    - Distinguish demo-mode stubs from production implementation paths.
+  tasks:
+    - Break implementation into chunks of ≤ 4 hours each.
+    - Group tasks by layer (Frontend, Backend, Data, Tests).
+    - Mark tasks that require backend availability separately.
+    - Include at least one verification task per feature layer.
+
+# Per-operation guidance
+operations:
+  apply:
+    guidance:
+      - Verify TypeScript compiles (pnpm typecheck) before marking a task done.
+      - Keep mock data stubs intact while backend is not yet wired; do not
+        silently remove fallback behaviour.
+      - Test summaries should reference the specific task from tasks.md.
+  archive:
+    guidance:
+      - Confirm the change's capability spec exists in openspec/specs/ before archiving.
+      - Summarize what was shipped and what was explicitly deferred.

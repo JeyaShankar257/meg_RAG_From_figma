@@ -2,7 +2,7 @@
 
 ## 1. Repository and Runtime Foundation
 
-- [ ] 1.1 Add `apps/api`, `apps/worker`, shared type/validation modules, and backend scripts without changing the existing Vite entrypoint; verify the expected workspace structure and existing frontend build remain intact.
+- [ ] 1.1 Add `apps/api`, `apps/worker`, `apps/agents`, shared type/validation modules, versioned agent job/result contracts, and backend scripts without changing the existing Vite entrypoint; verify the expected workspace structure and existing frontend build remain intact.
 - [ ] 1.2 Add server-only environment validation for Supabase, Resend, Gemini, API origin, storage bucket, and demo-mode settings; verify startup fails with actionable errors when required secrets are absent and never logs secret values.
 - [ ] 1.3 Add API health and correlation-ID middleware plus structured safe logging; verify the health endpoint returns a non-sensitive status and each request receives a correlation identifier.
 - [ ] 1.4 Document local API, worker, Supabase, Resend, and Gemini setup in the repository; verify every documented command and environment variable name matches the implementation.
@@ -28,8 +28,9 @@
 - [ ] 4.2 Implement transactional prescription review and approval with edited values, revision history, doctor identity, audit event, and downstream job enqueueing; verify non-doctors cannot approve and partial failures leave no incomplete approval.
 - [ ] 4.3 Implement durable job claiming, retry, backoff, terminal failure, and dead-letter visibility in `apps/worker`; verify a failed job can retry without duplicating its clinical side effect.
 - [ ] 4.4 Implement reminder scheduling, Resend delivery, provider message tracking, delivery webhooks, and quiet-hour/notification preference handling; verify enqueue, provider acceptance, bounce, retry, and confirmed-delivery states remain distinct.
-- [ ] 4.5 Implement adherence aggregation, AI pattern analysis through Gemini, escalation creation, care-team notification, and periodic report generation; verify every AI result preserves input snapshot, structured output, citations, confidence, safety flags, model/configuration versions, and review state.
+- [ ] 4.5 Implement adherence aggregation, dispatch to the Python agent service for AI pattern analysis and escalation recommendations, care-team notification, and periodic report generation; verify every AI result preserves input snapshot, structured output, citations, confidence, safety flags, model/configuration versions, and review state.
 - [ ] 4.6 Add worker unit/integration tests for prescription-to-schedule flow, transient provider failures, webhook replay, AI failure, escalation creation, and safe retry behavior; verify the tests run without requiring production credentials.
+- [ ] 4.7 Implement the Python agent service workflow boundary for RAG, pattern detection, and escalation recommendations with versioned structured input/output, idempotent job handling, and no direct clinical mutations; verify prompt/model failures become safe retryable or needs-review results.
 
 ## 5. Report, Consent, Correction, and Audit Workflows
 
@@ -52,4 +53,4 @@
 - [ ] 7.1 Add an end-to-end demo workflow covering doctor login, patient creation, patient activation, patient dose logging, report upload, AI analysis, doctor approval, reminder enqueue, and care-team escalation visibility; verify the workflow passes against isolated fictional data.
 - [ ] 7.2 Add CI scripts for formatting, TypeScript checks, migrations/RLS tests, API tests, worker tests, frontend build, and end-to-end checks; verify a clean checkout can run the documented validation commands.
 - [ ] 7.3 Run a security review checklist for secret exposure, role escalation, cross-patient access, signed-link leakage, prompt injection through notes, webhook replay, duplicate reminders, and unsafe AI output; verify findings are documented with owners or mitigations.
-- [ ] 7.4 Verify the deployed Vite frontend, separate Node API, separate Node worker, Supabase project, Resend integration, and Gemini integration communicate through configured environment variables; verify demo labels, health checks, logs, retries, and failure states are observable without exposing clinical data.
+- [ ] 7.4 Verify the deployed Vite frontend, separate Node API, separate Node worker, Python agent service, Supabase project, Resend integration, and Gemini integration communicate through configured environment variables; verify demo labels, health checks, logs, retries, and failure states are observable without exposing clinical data.

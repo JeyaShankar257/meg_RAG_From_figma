@@ -2,7 +2,7 @@
 
 ## Context
 
-The current AI Assistant in `src/pages/doctor/PatientPage.tsx` uses a simulated delay and static `DEMO_AI_ANALYSIS`, while citations are static mock records and patient reports are stored through browser localStorage. The broader `setup-backend-infrastructure` change provides the authentication, API, private storage, worker, audit, and doctor-approval foundations that this RAG feature depends on.
+The current AI Assistant in `src/pages/doctor/PatientPage.tsx` uses a simulated delay and static `DEMO_AI_ANALYSIS`, while citations are static mock records and patient reports are stored through browser localStorage. The broader `setup-backend-infrastructure` change provides the authentication, API, private storage, TypeScript worker, Python agent service, audit, and doctor-approval foundations that this RAG feature depends on.
 
 ## Goals / Non-Goals
 
@@ -45,11 +45,11 @@ Report upload commits the private file and metadata first, then enqueues an inde
 
 This keeps uploads reliable and makes indexing failures retryable without blocking the patient portal.
 
-### Server-side Gemini adapter with schema validation
+### Python agent workflow with schema validation
 
-Create `apps/api/src/ai/gemini.ts`, prompt construction, and response schemas. The API or worker sends only authorized context and retrieved evidence. Retrieved text is delimited and labeled untrusted so embedded instructions cannot override system safety rules.
+Create a Python agent workflow under `apps/agents` with prompt construction, retrieval orchestration, Gemini integration, and response schemas. The TypeScript API or worker dispatches only authorized context and retrieved evidence through a versioned job contract. Retrieved text is delimited and labeled untrusted so embedded instructions cannot override system safety rules.
 
-Validate confidence, severity, safety flags, citations, and medication suggestions before persistence. Invalid or incomplete output becomes an error or needs-review state.
+Validate confidence, severity, safety flags, citations, and medication suggestions at the Python boundary and again before persistence. Invalid or incomplete output becomes an error or needs-review state. The agent cannot approve prescriptions or directly mutate clinical records.
 
 ### Provenance-first result model
 
@@ -66,7 +66,7 @@ GET  /doctor/ai-analyses/:analysisId/evidence
 POST /reports/:reportId/reindex
 ```
 
-The create endpoint returns an analysis ID and status. The frontend polls or refreshes the analysis until it is complete or failed. The API owns authorization, context assembly, retrieval, Gemini calls, persistence, and audit events.
+The create endpoint returns an analysis ID and status. The frontend polls or refreshes the analysis until it is complete or failed. The API owns authorization, context assembly, persistence, and audit events. The Python agent service owns model orchestration and returns structured results through the versioned job contract.
 
 ### Frontend migration boundary
 
@@ -87,7 +87,7 @@ Add RAG request/response types and a typed client under `src/lib/api/`. Replace 
 
 1. Add RAG types, API schemas, and database migrations for sources, chunks, queries, results, and indexing jobs.
 2. Add pgvector functions, source ingestion, report text extraction, embedding generation, and worker retry behavior.
-3. Add authorization-aware retrieval and the Gemini adapter with strict output validation.
+3. Add authorization-aware retrieval and the Python agent workflow with strict input/output validation.
 4. Add RAG API endpoints, provenance persistence, audit events, and integration tests.
 5. Replace the Patient Page mock AI request with the typed API client and add Retrieved Evidence rendering.
 6. Replace static citations with persisted evidence and add report indexing status.

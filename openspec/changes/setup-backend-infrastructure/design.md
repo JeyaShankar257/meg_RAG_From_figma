@@ -2,7 +2,7 @@
 
 ## Context
 
-The current Vite/React application renders directly from `src/lib/mockData.ts`; login is simulated with a timeout, report files are stored as base64 data URLs in localStorage, and several workflow mutations exist only in component state or sessionStorage. The proposal defines the desired backend capability. This design chooses a same-repository backend that can replace those seams without moving the frontend to a different framework.
+The current Vite/React application renders directly from `src/lib/mockData.ts`; login is simulated with a timeout, report files are stored as base64 data URLs in localStorage, and several workflow mutations exist only in component state or sessionStorage. The proposal defines the desired backend capability. This design chooses a same-repository backend that can replace those seams without moving the frontend to a different framework. Transactional clinical operations remain in TypeScript, while agentic care-team workflows run in a separate Python service behind durable job and result contracts.
 
 ## Goals / Non-Goals
 
@@ -51,6 +51,30 @@ Deploy `apps/worker` as a separate Node service alongside `apps/api`. The worker
 
 Alternative considered: synchronous API calls for all downstream work. Rejected because email delivery, AI calls, and pipeline stages can be slow or fail independently of the user mutation.
 
+### Python agent service for care-team workflows
+
+Add an `apps/agents` Python service for stateful workflows such as RAG analysis, adherence pattern detection, escalation recommendation, and care-team coordination. The service consumes durable, correlation-linked jobs and returns validated structured results. It does not receive browser credentials and cannot directly approve prescriptions, change consent, mutate clinical records, or issue signed storage URLs.
+
+The TypeScript API remains the single browser-facing boundary and owns authentication, authorization, patient/workspace scoping, clinical transactions, audit events, and persistence of accepted agent results. The TypeScript worker owns operational jobs such as reminders, delivery webhooks, retries, and queue maintenance; it may dispatch agent jobs but does not duplicate agent reasoning.
+
+Use versioned JSON contracts shared between TypeScript and Python:
+
+```text
+AgentJob {
+  jobId, type, patientId, workspaceId, correlationId, attempt, payload
+}
+
+AgentResult {
+  jobId, status, evidenceIds, confidence, safetyFlags,
+  structuredOutput, modelVersion, promptVersion,
+  requiresDoctorReview
+}
+```
+
+Agent results are idempotent by `jobId` and persisted through the API/database boundary. Any recommendation that could affect treatment remains advisory until an authenticated doctor approval transaction is completed by the TypeScript API.
+
+Alternative considered: placing agent orchestration inside the TypeScript worker. Rejected because Python provides a better home for graph-based orchestration, retrieval evaluation, and future clinical signal tooling while preserving a narrow, auditable integration boundary.
+
 ### Domain model and transaction boundaries
 
 Create migrations for workspaces, profiles, user roles, patient records, assignments, care grants, consent, conditions, visits, medications, prescriptions, prescription revisions, dose schedules, dose logs, delivery events, AI analyses, citations, escalations, pipeline jobs, reports, notifications, correction requests, and audit events.
@@ -79,7 +103,7 @@ Send activation, reminder, report, and escalation messages through Resend from s
 
 ### AI safety and provenance
 
-The API accepts structured symptoms and an explicitly selected patient context snapshot. The worker sends only permitted context to Gemini and stores the prompt/configuration version, model version, input snapshot, structured result, confidence, safety flags, citations, and status. The UI labels results as advisory. Only a doctor approval endpoint can create an active prescription from a suggestion.
+The API accepts structured symptoms and an explicitly selected patient context snapshot. The Python agent service receives only permitted context and retrieved evidence through a durable job contract, sends model requests server-side, and returns validated structured output. The API persists the prompt/configuration version, model version, input snapshot, structured result, confidence, safety flags, citations, and status. The UI labels results as advisory. Only a doctor approval endpoint can create an active prescription from a suggestion.
 
 ## Risks / Trade-offs
 
