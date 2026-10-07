@@ -4,6 +4,8 @@
  * Version must be bumped on any breaking structural change.
  */
 
+import { z } from "zod";
+
 export const CONTRACT_VERSION = "1.0" as const;
 
 // ─── Agent Job ────────────────────────────────────────────────────────────────
@@ -112,3 +114,41 @@ export interface EscalationOutput {
     reasoning: string;
     recommendedAction?: string;
 }
+
+export const agentJobSchema = z.object({
+    jobId: z.string().min(1),
+    type: z.enum([
+        "rag_analysis",
+        "adherence_pattern_detection",
+        "escalation_recommendation",
+    ]),
+    contractVersion: z.literal(CONTRACT_VERSION),
+    patientId: z.string().min(1),
+    workspaceId: z.string().min(1),
+    correlationId: z.string().min(1).max(128),
+    attempt: z.number().int().min(1),
+    payload: z.record(z.unknown()),
+    createdAt: z.string().datetime({ offset: true }),
+});
+
+export const agentResultSchema = z.object({
+    jobId: z.string().min(1),
+    contractVersion: z.literal(CONTRACT_VERSION),
+    status: z.enum([
+        "completed",
+        "needs_review",
+        "failed_retryable",
+        "failed_terminal",
+    ]),
+    structuredOutput: z.record(z.unknown()).optional(),
+    confidence: z.number().min(0).max(1).optional(),
+    evidenceIds: z.array(z.string()).optional(),
+    safetyFlags: z.array(z.string()).optional(),
+    reasoning: z.string().optional(),
+    modelVersion: z.string(),
+    promptVersion: z.string(),
+    requiresDoctorReview: z.boolean(),
+    retryAfterSeconds: z.number().int().positive().optional(),
+    errorMessage: z.string().optional(),
+    completedAt: z.string().datetime({ offset: true }),
+});

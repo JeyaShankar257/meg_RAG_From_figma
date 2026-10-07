@@ -11,7 +11,10 @@ import { logger } from "../lib/logger.js";
  */
 export const correlationMiddleware = createMiddleware(async (c, next) => {
     const incoming = c.req.header("x-correlation-id");
-    const correlationId = incoming ?? randomUUID();
+    const correlationId =
+        incoming && /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(incoming)
+            ? incoming
+            : randomUUID();
 
     c.set("correlationId", correlationId);
     c.header("X-Correlation-Id", correlationId);

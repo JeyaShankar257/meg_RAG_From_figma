@@ -17,13 +17,16 @@ interface LogEntry {
 }
 
 const isProd = process.env["NODE_ENV"] === "production";
+const RESERVED_KEYS = new Set(["level", "message", "timestamp"]);
 
 function log(level: LogLevel, message: string, meta: Record<string, unknown> = {}): void {
     // Strip any accidentally included secret-looking keys
     const safeKeys = ["KEY", "SECRET", "TOKEN", "PASSWORD", "CREDENTIAL", "AUTH"];
     const safeMeta = Object.fromEntries(
         Object.entries(meta).filter(
-            ([k]) => !safeKeys.some((sk) => k.toUpperCase().includes(sk)),
+            ([k]) =>
+                !RESERVED_KEYS.has(k) &&
+                !safeKeys.some((sk) => k.toUpperCase().includes(sk)),
         ),
     );
 

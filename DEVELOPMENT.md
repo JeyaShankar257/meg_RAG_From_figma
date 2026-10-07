@@ -105,8 +105,12 @@ curl http://localhost:3001/health
 # Expected: {"status":"ok","service":"mednova-api","demoMode":true,...}
 
 # Agent service health
-curl http://localhost:8001/health
-# Expected: {"status":"ok","service":"mednova-agents"}
+curl http://localhost:8001/health/live
+# Expected: {"status":"ok","service":"mednova-agents",...}
+
+# Readiness is separate from liveness and reports only non-sensitive status.
+curl http://localhost:3001/health/ready
+curl http://localhost:8001/health/ready
 ```
 
 ---
@@ -128,6 +132,16 @@ pnpm typecheck
 # Python tests
 cd apps/agents && pytest
 ```
+
+The worker currently provides a lifecycle-only entrypoint. It validates
+configuration, reports startup/shutdown, and does not claim or mutate clinical
+jobs until the durable worker change is implemented.
+
+The Python service uses LangGraph for the explicit validation, prompt,
+provider, and result-classification workflow. LangChain/provider integrations
+remain behind this internal dispatch boundary. Agent results are advisory and
+always require doctor review; the agent service cannot authenticate users,
+make RLS decisions, persist clinical records, or activate prescriptions.
 
 ---
 

@@ -7,6 +7,8 @@
     "dev": "vite",
     "build": "vite build",
     "typecheck": "tsc --noEmit",
+    "verify:backend": "corepack pnpm --filter @mednova/api typecheck && corepack pnpm --filter @mednova/worker typecheck && cd apps/agents && python -m pytest tests -q",
+    "verify:foundation": "corepack pnpm typecheck && corepack pnpm run verify:backend && corepack pnpm build",
     "preview": "vite preview",
     "format": "oxfmt"
   },

@@ -3,7 +3,7 @@
  * Shares the same pattern as apps/api/src/config.ts.
  */
 
-interface WorkerEnvConfig {
+export interface WorkerEnvConfig {
     supabaseUrl: string;
     supabaseServiceRoleKey: string;
     resendApiKey: string;
@@ -13,6 +13,8 @@ interface WorkerEnvConfig {
     pollIntervalMs: number;
     maxConcurrentJobs: number;
     demoMode: boolean;
+    serviceName: "mednova-worker";
+    contractVersion: "1.0";
 }
 
 function requireEnv(name: string): string {
@@ -68,6 +70,8 @@ export function validateWorkerEnv(): WorkerEnvConfig {
         pollIntervalMs: requireInt("WORKER_POLL_INTERVAL_MS", 5000),
         maxConcurrentJobs: requireInt("WORKER_MAX_CONCURRENT_JOBS", 5),
         demoMode: process.env["DEMO_MODE"] === "true",
+        serviceName: "mednova-worker",
+        contractVersion: "1.0",
     };
 }
 

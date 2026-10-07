@@ -1,0 +1,17 @@
+{
+  "jobId": "job-demo-001",
+  "type": "rag_analysis",
+  "contractVersion": "1.0",
+  "patientId": "patient-demo-001",
+  "workspaceId": "workspace-demo-001",
+  "correlationId": "corr-demo-001",
+  "attempt": 1,
+  "payload": {
+    "clinicalQuestion": "What should the doctor review?",
+    "patientContextSnapshot": {
+      "conditions": [],
+      "currentMedications": []
+    }
+  },
+  "createdAt": "2026-10-07T12:00:00.000Z"
+}

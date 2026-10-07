@@ -18,6 +18,28 @@ healthRouter.get("/", (c) => {
         demoMode: config.demoMode,
         timestamp: new Date().toISOString(),
     });
+
+    healthRouter.get("/live", (c) =>
+        c.json({
+            status: "ok",
+            service: "mednova-api",
+            timestamp: new Date().toISOString(),
+        }),
+    );
+
+    healthRouter.get("/ready", (c) => {
+        const config = getConfig();
+        const ready = config.demoMode || Boolean(config.agentsServiceUrl);
+        return c.json(
+            {
+                status: ready ? "ok" : "unavailable",
+                service: "mednova-api",
+                mode: config.demoMode ? "demo" : "configured",
+                timestamp: new Date().toISOString(),
+            },
+            ready ? 200 : 503,
+        );
+    });
 });
 
 export { healthRouter };

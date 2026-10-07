@@ -6,7 +6,7 @@
  * Secret values are NEVER logged — only variable names are shown in errors.
  */
 
-interface EnvConfig {
+export interface EnvConfig {
     supabaseUrl: string;
     supabaseServiceRoleKey: string;
     supabaseAnonKey: string;
@@ -20,6 +20,8 @@ interface EnvConfig {
     agentsServiceUrl: string;
     agentsInternalSecret: string;
     demoMode: boolean;
+    serviceName: "mednova-api";
+    contractVersion: "1.0";
 }
 
 function requireEnv(name: string): string {
@@ -124,6 +126,8 @@ export function validateEnv(): EnvConfig {
         agentsServiceUrl: agentsServiceUrl!,
         agentsInternalSecret: agentsInternalSecret!,
         demoMode,
+        serviceName: "mednova-api",
+        contractVersion: "1.0",
     };
 }
 

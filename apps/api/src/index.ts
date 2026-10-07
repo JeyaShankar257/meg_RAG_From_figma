@@ -11,7 +11,9 @@ initConfig();
 const config = getConfig();
 
 // ─── 2. Build Hono app ────────────────────────────────────────────────────────
-const app = new Hono();
+const app = new Hono<{
+    Variables: { correlationId: string };
+}>();
 
 app.use("*", cors({ origin: config.corsAllowedOrigins }));
 app.use("*", correlationMiddleware);

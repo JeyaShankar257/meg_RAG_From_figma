@@ -1,0 +1,13 @@
+{
+  "jobId": "job-demo-001",
+  "contractVersion": "1.0",
+  "status": "completed",
+  "structuredOutput": {
+    "summary": "Review with clinician",
+    "recommendations": []
+  },
+  "modelVersion": "deterministic-demo",
+  "promptVersion": "foundation-v1",
+  "requiresDoctorReview": true,
+  "completedAt": "2026-10-07T12:00:01.000Z"
+}
