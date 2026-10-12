@@ -8,6 +8,8 @@ export interface WorkerEnvConfig {
     supabaseServiceRoleKey: string;
     resendApiKey: string;
     resendFromAddress: string;
+    geminiApiKey: string;
+    geminiModel: string;
     agentsServiceUrl: string;
     agentsInternalSecret: string;
     pollIntervalMs: number;
@@ -37,16 +39,19 @@ function requireInt(name: string, fallback: number): number {
 
 export function validateWorkerEnv(): WorkerEnvConfig {
     const errors: string[] = [];
+    const demoMode = process.env["DEMO_MODE"] === "true";
     const collect = <T>(fn: () => T, key: string): T | undefined => {
         try { return fn(); } catch (e) { errors.push(`  ✗ ${key}: ${(e as Error).message}`); return undefined; }
     };
 
     const supabaseUrl = collect(() => requireEnv("SUPABASE_URL"), "SUPABASE_URL");
     const supabaseServiceRoleKey = collect(() => requireEnv("SUPABASE_SERVICE_ROLE_KEY"), "SUPABASE_SERVICE_ROLE_KEY");
-    const resendApiKey = collect(() => requireEnv("RESEND_API_KEY"), "RESEND_API_KEY");
-    const resendFromAddress = collect(() => requireEnv("RESEND_FROM_ADDRESS"), "RESEND_FROM_ADDRESS");
-    const agentsServiceUrl = collect(() => requireEnv("AGENTS_SERVICE_URL"), "AGENTS_SERVICE_URL");
-    const agentsInternalSecret = collect(() => requireEnv("AGENTS_INTERNAL_SECRET"), "AGENTS_INTERNAL_SECRET");
+    const optionalEnv = (name: string, fallback: string) => (process.env[name] ?? "").trim() || fallback;
+    const resendApiKey = demoMode ? optionalEnv("RESEND_API_KEY", "demo-resend-key") : collect(() => requireEnv("RESEND_API_KEY"), "RESEND_API_KEY");
+    const resendFromAddress = demoMode ? optionalEnv("RESEND_FROM_ADDRESS", "demo@mednova.local") : collect(() => requireEnv("RESEND_FROM_ADDRESS"), "RESEND_FROM_ADDRESS");
+    const geminiApiKey = demoMode ? optionalEnv("GEMINI_API_KEY", "demo-gemini-key") : collect(() => requireEnv("GEMINI_API_KEY"), "GEMINI_API_KEY");
+    const agentsServiceUrl = demoMode ? optionalEnv("AGENTS_SERVICE_URL", "http://localhost:8001") : collect(() => requireEnv("AGENTS_SERVICE_URL"), "AGENTS_SERVICE_URL");
+    const agentsInternalSecret = demoMode ? optionalEnv("AGENTS_INTERNAL_SECRET", "demo-agent-secret") : collect(() => requireEnv("AGENTS_INTERNAL_SECRET"), "AGENTS_INTERNAL_SECRET");
 
     if (errors.length > 0) {
         console.error([
@@ -60,16 +65,20 @@ export function validateWorkerEnv(): WorkerEnvConfig {
         process.exit(1);
     }
 
+    const geminiModel = (process.env["GEMINI_MODEL"] ?? "").trim() || "gemini-1.5-pro";
+
     return {
         supabaseUrl: supabaseUrl!,
         supabaseServiceRoleKey: supabaseServiceRoleKey!,
         resendApiKey: resendApiKey!,
         resendFromAddress: resendFromAddress!,
+        geminiApiKey: geminiApiKey!,
+        geminiModel,
         agentsServiceUrl: agentsServiceUrl!,
         agentsInternalSecret: agentsInternalSecret!,
         pollIntervalMs: requireInt("WORKER_POLL_INTERVAL_MS", 5000),
         maxConcurrentJobs: requireInt("WORKER_MAX_CONCURRENT_JOBS", 5),
-        demoMode: process.env["DEMO_MODE"] === "true",
+        demoMode,
         serviceName: "mednova-worker",
         contractVersion: "1.0",
     };

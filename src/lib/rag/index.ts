@@ -4,7 +4,10 @@ import { mockRagService } from "./mockAdapter";
 export type RagMode = "api" | "mock";
 
 export function getRagMode(): RagMode {
-  return import.meta.env.VITE_RAG_MODE === "api" ? "api" : "mock";
+  return import.meta.env.VITE_RAG_MODE === "api" &&
+    import.meta.env.VITE_DEMO_MODE !== "true"
+    ? "api"
+    : "mock";
 }
 
 export function getRagService() {

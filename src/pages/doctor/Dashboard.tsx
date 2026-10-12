@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { DEMO_PATIENTS, DEMO_ESCALATIONS } from "../../lib/mockData";
+import { api, isBackendConfigured } from "../../lib/api/apiClient";
+import { DEMO_PATIENTS } from "../../lib/mockData";
 import Card from "../../components/ui/Card";
 import Badge from "../../components/ui/Badge";
 import Button from "../../components/ui/Button";
@@ -27,17 +28,29 @@ export default function DoctorDashboard() {
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState("");
   const [searchId, setSearchId] = useState("");
+  const [patients, setPatients] = useState<typeof DEMO_PATIENTS>(isBackendConfigured() ? [] : DEMO_PATIENTS);
+  const [loading, setLoading] = useState(isBackendConfigured());
+  const [error, setError] = useState("");
+  useEffect(() => {
+    if (!isBackendConfigured()) return;
+    api.patients.list()
+      .then(({ patients: result }) => setPatients(result))
+      .catch(() => setError("Patients could not be loaded. Retry to refresh."))
+      .finally(() => setLoading(false));
+  }, []);
 
-  const filtered = DEMO_PATIENTS.filter(
+  const filtered = patients.filter(
     (p) =>
       p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       p.patientId.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const openEscalations = DEMO_ESCALATIONS.filter((e) => e.status === "open");
+  const openEscalations = patients.filter((patient) => patient.hasEscalation);
 
   return (
     <div className="p-6 max-w-7xl space-y-6 animate-fade-in">
+    {loading && <p className="text-sm text-slate-500">Loading patient data…</p>}
+    {error && <p className="text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded-lg p-3">{error}</p>}
       {/* Page header */}
       <div className="flex items-start justify-between">
         <div>
@@ -65,9 +78,9 @@ export default function DoctorDashboard() {
                 </div>
                 {openEscalations.map((esc) => (
                   <div key={esc.id} className="mt-1.5 text-sm text-rose-700">
-                    <span className="font-medium">{esc.patientName}</span> — {esc.rootCause}
+                    <span className="font-medium">{esc.name}</span> — adherence escalation
                     <span className="ml-2 bg-rose-100 text-rose-700 text-xs px-1.5 py-0.5 rounded-full font-medium border border-rose-200">
-                      {esc.severity}
+                      attention
                     </span>
                   </div>
                 ))}
@@ -76,7 +89,7 @@ export default function DoctorDashboard() {
             <Button
               variant="danger"
               size="sm"
-              onClick={() => navigate("/doctor/patients/p-003/care-team")}
+              onClick={() => navigate(`/doctor/patients/${openEscalations[0]?.id}/care-team`)}
             >
               Review
             </Button>

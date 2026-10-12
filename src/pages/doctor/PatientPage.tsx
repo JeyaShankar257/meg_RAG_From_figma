@@ -39,6 +39,7 @@ import PrescriptionSuggestionCard from "../../components/doctor/rag/Prescription
 import EditablePrescriptionCard, {
   type EditableMedicationField,
 } from "../../components/doctor/EditablePrescriptionCard";
+import { api, isBackendConfigured } from "../../lib/api/apiClient";
 
 const TABS = ["Overview", "Visits", "Adherence", "Reports", "AI Assistant", "Prescription"];
 
@@ -73,10 +74,29 @@ export default function PatientPage() {
   const [approveToast, setApproveToast] = useState(false);
   const [justApprovedIds, setJustApprovedIds] = useState<Set<string>>(new Set());
 
-  const patient = DEMO_PATIENTS.find((p) => p.id === patientId) || DEMO_PATIENTS[0];
-  const visits = DEMO_VISITS.filter((v) => v.patientId === patient.id);
-  const [patientReports, setPatientReports] = useState(() => getPatientUploadedReports(patient.id));
+  const [patient, setPatient] = useState(() => DEMO_PATIENTS.find((p) => p.id === patientId) || DEMO_PATIENTS[0]);
+  const [visits, setVisits] = useState(() => DEMO_VISITS.filter((v) => v.patientId === patient.id));
+  const [patientReports, setPatientReports] = useState<PatientUploadedReport[]>(() => isBackendConfigured() ? [] : getPatientUploadedReports(patient.id));
+  const [loadingData, setLoadingData] = useState(isBackendConfigured());
+  const [dataError, setDataError] = useState("");
   const [reindexingReportId, setReindexingReportId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isBackendConfigured() || !patientId) return;
+    setLoadingData(true);
+    Promise.all([
+      api.patients.get(patientId),
+      api.patients.getVisits(patientId),
+      api.reports.list(patientId),
+      api.patients.getPrescriptions(patientId),
+    ]).then(([patientResult, visitsResult, reportsResult, prescriptionsResult]) => {
+      setPatient(patientResult.patient);
+      setVisits(visitsResult.visits);
+      setPatientReports(reportsResult.reports as PatientUploadedReport[]);
+      setPrescriptions(prescriptionsResult.prescriptions as Prescription[]);
+    }).catch(() => setDataError("Patient data could not be loaded. Retry to refresh."))
+      .finally(() => setLoadingData(false));
+  }, [patientId]);
 
   useEffect(() => {
     setRagResponse(null);
@@ -207,8 +227,24 @@ export default function PatientPage() {
     setShowConfirm(true);
   };
 
-  const handleConfirmPrescriptionChanges = () => {
+  const handleConfirmPrescriptionChanges = async () => {
     if (!editingPrescriptionId || !prescriptionDraft) return;
+    if (isBackendConfigured()) {
+      try {
+        const result = await api.prescriptions.approve(editingPrescriptionId, {
+          medication: prescriptionDraft,
+          reason: prescriptionReason.trim(),
+        });
+        setPrescriptions((previous) => previous.map((prescription) =>
+          prescription.id === editingPrescriptionId ? result.prescription as Prescription : prescription
+        ));
+      } catch {
+        setDataError("Prescription approval could not be saved.");
+        return;
+      }
+      handleCancelPrescriptionEdit();
+      return;
+    }
     const changedAt = new Date().toISOString();
     setPrescriptions((previous) => previous.map((prescription) =>
       prescription.id === editingPrescriptionId
@@ -231,11 +267,23 @@ export default function PatientPage() {
     handleCancelPrescriptionEdit();
   };
 
-  const handleViewReport = (report: PatientUploadedReport) => {
-    window.open(report.fileDataUrl, "_blank", "noopener,noreferrer");
+  const handleViewReport = async (report: PatientUploadedReport) => {
+    try {
+      const url = isBackendConfigured()
+        ? (await api.reports.getViewUrl(report.id)).signedUrl
+        : report.fileDataUrl;
+      if (url) window.open(url, "_blank", "noopener,noreferrer");
+    } catch { setDataError("This report could not be opened."); }
   };
 
-  const handleMarkReportReviewed = (reportId: string) => {
+  const handleMarkReportReviewed = async (reportId: string) => {
+    if (isBackendConfigured()) {
+      try {
+        const { report } = await api.reports.review(reportId);
+        setPatientReports((current) => current.map((item) => item.id === reportId ? report as PatientUploadedReport : item));
+      } catch { setDataError("Report review could not be saved."); }
+      return;
+    }
     const reports = markPatientReportReviewed(reportId);
     setPatientReports(reports.filter((report) => report.patientId === patient.id));
   };
@@ -259,7 +307,7 @@ export default function PatientPage() {
   };
 
   const handleTabChange = (tab: string) => {
-    if (tab === "Reports") {
+    if (tab === "Reports" && !isBackendConfigured()) {
       setPatientReports(getPatientUploadedReports(patient.id));
     }
     setActiveTab(tab);
@@ -267,6 +315,8 @@ export default function PatientPage() {
 
   return (
     <div className="animate-fade-in">
+      {loadingData && <div className="mx-6 mt-4 rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-sm text-slate-500">Loading patient data…</div>}
+      {dataError && <div className="mx-6 mt-4 rounded-lg bg-rose-50 border border-rose-200 px-3 py-2 text-sm text-rose-700">{dataError}</div>}
       {/* Patient header */}
       <div className="bg-white border-b border-slate-200 px-6 py-5">
         <div className="flex items-start justify-between gap-4 flex-wrap">
@@ -446,7 +496,7 @@ export default function PatientPage() {
                           </div>
                           <h3 className="text-sm font-semibold text-slate-900 mt-0.5">{visit.condition}</h3>
                           <div className="flex gap-1.5 mt-1.5 flex-wrap">
-                            {visit.symptoms.map((s) => (
+                            {(visit.symptoms ?? []).map((s) => (
                               <span key={s} className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full">{s}</span>
                             ))}
                           </div>

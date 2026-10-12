@@ -3,11 +3,14 @@ import { useNavigate } from "react-router-dom";
 import Button from "../../components/ui/Button";
 import Input, { Select } from "../../components/ui/Input";
 import Card from "../../components/ui/Card";
+import { api } from "../../lib/api/apiClient";
 
 export default function NewPatient() {
   const navigate = useNavigate();
   const [step, setStep] = useState<"form" | "confirm">("form");
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [createdPatient, setCreatedPatient] = useState<{ patientId?: string; id?: string } | null>(null);
   const [form, setForm] = useState({
     firstName: "", lastName: "", email: "", phone: "",
     dob: "", gender: "", address: "", guardianName: "",
@@ -15,15 +18,24 @@ export default function NewPatient() {
     assignedDoctor: "Dr. Jeya Shankar M", careTeamNotes: "", consent: false,
   });
 
-  const generatedId = "PT-00268";
+  const generatedId = createdPatient?.patientId ?? createdPatient?.id ?? "Pending";
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
+    setError("");
+    try {
+      const response = await api.patients.create({
+        fullName: `${form.firstName} ${form.lastName}`.trim(),
+        dateOfBirth: form.dob,
+        contactEmail: form.email,
+        conditions: form.conditions.split(",").map((condition) => condition.trim()).filter(Boolean),
+      });
+      setCreatedPatient(response.patient);
       setStep("confirm");
-    }, 1000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Patient could not be created. Try again.");
+    } finally { setLoading(false); }
   };
 
   const handleCopyId = () => {
@@ -122,6 +134,7 @@ export default function NewPatient() {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
+        {error && <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</div>}
         <Card padding="md">
           <h2 className="text-sm font-semibold text-slate-800 mb-4">Demographics</h2>
           <div className="grid sm:grid-cols-2 gap-4">

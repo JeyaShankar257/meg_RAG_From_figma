@@ -1,31 +1,146 @@
-import { useState } from "react";
-import { DEMO_TRUST_COMPONENTS, DEMO_ADHERENCE } from "../../lib/mockData";
-import Card, { CardHeader, CardTitle } from "../../components/ui/Card";
-import Badge from "../../components/ui/Badge";
-import AdherenceRing from "../../components/charts/AdherenceRing";
+import { useEffect, useState } from "react"
+
+import { DEMO_TRUST_COMPONENTS, DEMO_ADHERENCE } from "../../lib/mockData"
+
+import Card, { CardHeader, CardTitle } from "../../components/ui/Card"
+
+import Badge from "../../components/ui/Badge"
+
+import AdherenceRing from "../../components/charts/AdherenceRing"
+
+import { api, getPatientId, isBackendConfigured } from "../../lib/api/apiClient"
+
+import { useSession } from "../../lib/auth/SessionProvider"
 
 export default function Transparency() {
+  const { user } = useSession()
+
   const [consentMap, setConsentMap] = useState<Record<string, boolean>>({
     care_team: true,
-    escalations: true,
-    reports: true,
-    ai_analysis: false,
-  });
 
-  const toggleConsent = (key: string) => {
-    setConsentMap((prev) => ({ ...prev, [key]: !prev[key] }));
-  };
+    escalations: true,
+
+    reports: true,
+
+    ai_analysis: false,
+  })
+
+  const [loading, setLoading] = useState(isBackendConfigured())
+
+  const [error, setError] = useState("")
+
+  const [saving, setSaving] = useState(false)
+
+  const [correctionMessage, setCorrectionMessage] = useState("")
+
+  useEffect(() => {
+    if (!isBackendConfigured() || !user) return
+
+    api.patients
+      .getConsent(getPatientId(user))
+
+      .then(({ consent }) => {
+        if (!consent) return
+
+        setConsentMap({
+          care_team: consent.share_with_care_team ?? true,
+
+          escalations: consent.share_with_care_team ?? true,
+
+          reports: consent.allow_reminders ?? true,
+
+          ai_analysis: consent.allow_ai_analysis ?? false,
+        })
+      })
+
+      .catch(() => setError("Consent settings could not be loaded."))
+
+      .finally(() => setLoading(false))
+  }, [user])
+
+  const toggleConsent = async (key: string) => {
+    const next = { ...consentMap, [key]: !consentMap[key] }
+
+    setConsentMap(next)
+
+    if (!isBackendConfigured() || !user) return
+
+    setSaving(true)
+
+    try {
+      await api.patients.updateConsent(getPatientId(user), {
+        shareWithCareTeam: next.care_team,
+
+        allowReminders: next.reports,
+
+        allowAiAnalysis: next.ai_analysis,
+      })
+    } catch {
+      setConsentMap(consentMap)
+      setError("Consent could not be saved. Try again.")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const submitCorrection = async () => {
+    const description = window.prompt(
+      "Describe the correction you would like reviewed:",
+    )
+
+    if (!description?.trim()) return
+
+    setCorrectionMessage("")
+
+    try {
+      if (isBackendConfigured() && user) {
+        await api.corrections.create({
+          patientId: getPatientId(user),
+
+          targetType: "adherence",
+
+          targetId: "patient-request",
+
+          description: description.trim(),
+        })
+      }
+
+      setCorrectionMessage(
+        "Your correction request was submitted for care-team review.",
+      )
+    } catch {
+      setError("Correction request could not be submitted. Try again.")
+    }
+  }
 
   const weightedScore = Math.round(
-    DEMO_TRUST_COMPONENTS.reduce((sum, c) => sum + (c.score * c.weight) / 100, 0)
-  );
+    DEMO_TRUST_COMPONENTS.reduce(
+      (sum, c) => sum + (c.score * c.weight) / 100,
+      0,
+    ),
+  )
 
   return (
     <div className="p-4 lg:p-6 space-y-5 animate-fade-in">
       <div>
         <h1 className="text-xl font-bold text-slate-900">My Data</h1>
-        <p className="text-slate-500 text-sm">See what&apos;s tracked, what&apos;s shared, and manage your consent.</p>
+        <p className="text-slate-500 text-sm">
+          See what&apos;s tracked, what&apos;s shared, and manage your consent.
+        </p>
       </div>
+      {loading && (
+        <p className="text-sm text-slate-500">Loading consent settings…</p>
+      )}
+      {error && (
+        <p className="text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded-lg p-3">
+          {error}
+        </p>
+      )}
+      {saving && (
+        <p className="text-xs text-slate-500">
+          Saving your consent preferences…
+        </p>
+      )}
 
       {/* Trust score breakdown */}
       <Card padding="md">
@@ -38,7 +153,8 @@ export default function Transparency() {
           <AdherenceRing score={weightedScore} size={90} label="Trust" />
           <div className="flex-1">
             <p className="text-sm text-slate-600 mb-3">
-              Your trust score is calculated from four components. It&apos;s shown to your care team as a clinical signal — not a grade.
+              Your trust score is calculated from four components. It&apos;s
+              shown to your care team as a clinical signal — not a grade.
             </p>
           </div>
         </div>
@@ -48,15 +164,25 @@ export default function Transparency() {
             <div key={c.name}>
               <div className="flex items-center justify-between mb-1">
                 <div>
-                  <span className="text-sm font-medium text-slate-800">{c.name}</span>
-                  <span className="text-xs text-slate-400 ml-2">weight {c.weight}%</span>
+                  <span className="text-sm font-medium text-slate-800">
+                    {c.name}
+                  </span>
+                  <span className="text-xs text-slate-400 ml-2">
+                    weight {c.weight}%
+                  </span>
                 </div>
-                <span className="text-sm font-bold text-slate-900">{c.score}</span>
+                <span className="text-sm font-bold text-slate-900">
+                  {c.score}
+                </span>
               </div>
               <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
                 <div
                   className={`h-full rounded-full transition-all duration-700 ${
-                    c.score >= 85 ? "bg-emerald-500" : c.score >= 65 ? "bg-amber-500" : "bg-rose-500"
+                    c.score >= 85
+                      ? "bg-emerald-500"
+                      : c.score >= 65
+                        ? "bg-amber-500"
+                        : "bg-rose-500"
                   }`}
                   style={{ width: `${c.score}%` }}
                 />
@@ -74,16 +200,40 @@ export default function Transparency() {
         </CardHeader>
         <div className="space-y-2">
           {[
-            { label: "Dose timestamps", detail: "When you log each dose (method, time, status)" },
-            { label: "Reminder delivery", detail: "Whether reminders were delivered, bounced, or failed" },
-            { label: "Late logging patterns", detail: "If doses are consistently logged late vs. on time" },
-            { label: "Reminder response time", detail: "How quickly you log a dose after a reminder" },
-            { label: "Skip/miss history", detail: "Dates and any reasons you provided for skips" },
+            {
+              label: "Dose timestamps",
+              detail: "When you log each dose (method, time, status)",
+            },
+
+            {
+              label: "Reminder delivery",
+              detail: "Whether reminders were delivered, bounced, or failed",
+            },
+
+            {
+              label: "Late logging patterns",
+              detail: "If doses are consistently logged late vs. on time",
+            },
+
+            {
+              label: "Reminder response time",
+              detail: "How quickly you log a dose after a reminder",
+            },
+
+            {
+              label: "Skip/miss history",
+              detail: "Dates and any reasons you provided for skips",
+            },
           ].map((item) => (
-            <div key={item.label} className="flex items-start gap-3 py-2 border-b border-slate-50 last:border-0">
+            <div
+              key={item.label}
+              className="flex items-start gap-3 py-2 border-b border-slate-50 last:border-0"
+            >
               <div className="w-2 h-2 rounded-full bg-teal-400 mt-1.5 flex-shrink-0" />
               <div>
-                <p className="text-sm font-medium text-slate-800">{item.label}</p>
+                <p className="text-sm font-medium text-slate-800">
+                  {item.label}
+                </p>
                 <p className="text-xs text-slate-500">{item.detail}</p>
               </div>
             </div>
@@ -98,15 +248,48 @@ export default function Transparency() {
         </CardHeader>
         <div className="grid grid-cols-2 gap-3">
           {[
-            { label: "Scheduled", value: DEMO_ADHERENCE.taken + DEMO_ADHERENCE.late + DEMO_ADHERENCE.skipped + DEMO_ADHERENCE.missed },
-            { label: "Logged", value: DEMO_ADHERENCE.taken + DEMO_ADHERENCE.late + DEMO_ADHERENCE.skipped },
-            { label: "Delivery failures", value: DEMO_ADHERENCE.deliveryFailures, note: "Not counted as misses" },
-            { label: "True misses", value: DEMO_ADHERENCE.missed, note: "Patient-attributable" },
+            {
+              label: "Scheduled",
+              value:
+                DEMO_ADHERENCE.taken +
+                DEMO_ADHERENCE.late +
+                DEMO_ADHERENCE.skipped +
+                DEMO_ADHERENCE.missed,
+            },
+
+            {
+              label: "Logged",
+              value:
+                DEMO_ADHERENCE.taken +
+                DEMO_ADHERENCE.late +
+                DEMO_ADHERENCE.skipped,
+            },
+
+            {
+              label: "Delivery failures",
+              value: DEMO_ADHERENCE.deliveryFailures,
+              note: "Not counted as misses",
+            },
+
+            {
+              label: "True misses",
+              value: DEMO_ADHERENCE.missed,
+              note: "Patient-attributable",
+            },
           ].map((s) => (
-            <div key={s.label} className="bg-slate-50 rounded-xl px-3 py-3 border border-slate-100">
+            <div
+              key={s.label}
+              className="bg-slate-50 rounded-xl px-3 py-3 border border-slate-100"
+            >
               <div className="text-xl font-bold text-slate-900">{s.value}</div>
-              <div className="text-xs font-medium text-slate-600">{s.label}</div>
-              {s.note && <div className="text-[10px] text-slate-400 mt-0.5">{s.note}</div>}
+              <div className="text-xs font-medium text-slate-600">
+                {s.label}
+              </div>
+              {s.note && (
+                <div className="text-[10px] text-slate-400 mt-0.5">
+                  {s.note}
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -120,16 +303,49 @@ export default function Transparency() {
         </CardHeader>
         <div className="space-y-3">
           {[
-            { key: "care_team", label: "Share adherence data with care team", detail: "Required for clinical monitoring", required: true },
-            { key: "escalations", label: "Allow escalation sharing with broader care team", detail: "Notifies nurse coordinator for urgent patterns", required: false },
-            { key: "reports", label: "Receive weekly and monthly reports by email", detail: "Encouragement-focused adherence summaries", required: false },
-            { key: "ai_analysis", label: "Allow AI diagnostic analysis for my visits", detail: "AI output is advisory only; doctor reviews before any action", required: false },
+            {
+              key: "care_team",
+              label: "Share adherence data with care team",
+              detail: "Required for clinical monitoring",
+              required: true,
+            },
+
+            {
+              key: "escalations",
+              label: "Allow escalation sharing with broader care team",
+              detail: "Notifies nurse coordinator for urgent patterns",
+              required: false,
+            },
+
+            {
+              key: "reports",
+              label: "Receive weekly and monthly reports by email",
+              detail: "Encouragement-focused adherence summaries",
+              required: false,
+            },
+
+            {
+              key: "ai_analysis",
+              label: "Allow AI diagnostic analysis for my visits",
+              detail:
+                "AI output is advisory only; doctor reviews before any action",
+              required: false,
+            },
           ].map((item) => (
-            <div key={item.key} className="flex items-start justify-between gap-4 py-2.5 border-b border-slate-50 last:border-0">
+            <div
+              key={item.key}
+              className="flex items-start justify-between gap-4 py-2.5 border-b border-slate-50 last:border-0"
+            >
               <div>
-                <p className="text-sm font-medium text-slate-800">{item.label}</p>
+                <p className="text-sm font-medium text-slate-800">
+                  {item.label}
+                </p>
                 <p className="text-xs text-slate-500">{item.detail}</p>
-                {item.required && <p className="text-[10px] text-slate-400 mt-0.5">Required for care</p>}
+                {item.required && (
+                  <p className="text-[10px] text-slate-400 mt-0.5">
+                    Required for care
+                  </p>
+                )}
               </div>
               <button
                 onClick={() => !item.required && toggleConsent(item.key)}
@@ -138,7 +354,11 @@ export default function Transparency() {
                   consentMap[item.key] ? "bg-teal-600" : "bg-slate-200"
                 }`}
               >
-                <span className={`inline-block h-4 w-4 rounded-full bg-white shadow transition-transform ${consentMap[item.key] ? "translate-x-6" : "translate-x-1"}`} />
+                <span
+                  className={`inline-block h-4 w-4 rounded-full bg-white shadow transition-transform ${
+                    consentMap[item.key] ? "translate-x-6" : "translate-x-1"
+                  }`}
+                />
               </button>
             </div>
           ))}
@@ -147,12 +367,23 @@ export default function Transparency() {
 
       {/* Correction request */}
       <Card padding="md" className="border-dashed border-slate-300 bg-slate-50">
-        <p className="text-sm font-medium text-slate-800 mb-1">Request a Data Correction</p>
-        <p className="text-xs text-slate-500 mb-3">If you believe a dose log, adherence record, or AI classification is incorrect, you can request a review from your care team.</p>
-        <button className="text-sm text-teal-600 hover:text-teal-700 font-medium cursor-pointer transition-colors">
+        <p className="text-sm font-medium text-slate-800 mb-1">
+          Request a Data Correction
+        </p>
+        <p className="text-xs text-slate-500 mb-3">
+          If you believe a dose log, adherence record, or AI classification is
+          incorrect, you can request a review from your care team.
+        </p>
+        <button
+          onClick={() => void submitCorrection()}
+          className="text-sm text-teal-600 hover:text-teal-700 font-medium cursor-pointer transition-colors"
+        >
           Submit Correction Request →
         </button>
+        {correctionMessage && (
+          <p className="text-xs text-emerald-700 mt-2">{correctionMessage}</p>
+        )}
       </Card>
     </div>
-  );
+  )
 }

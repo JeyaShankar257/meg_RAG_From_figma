@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { DEMO_REPORTS } from "../../lib/mockData";
 import type { PatientUploadedReport } from "../../lib/types";
 import {
@@ -10,6 +10,8 @@ import {
   setPatientReportIndexingStatus,
 } from "../../lib/patientReports";
 import { getRagService } from "../../lib/rag";
+import { api, getPatientId, isBackendConfigured } from "../../lib/api/apiClient";
+import { useSession } from "../../lib/auth/SessionProvider";
 import Card from "../../components/ui/Card";
 import Badge from "../../components/ui/Badge";
 import Button from "../../components/ui/Button";
@@ -43,13 +45,18 @@ function readFileAsDataUrl(file: File): Promise<string> {
   });
 }
 
-function openReport(report: PatientUploadedReport) {
-  window.open(report.fileDataUrl, "_blank", "noopener,noreferrer");
+async function openReport(report: PatientUploadedReport) {
+  const url = isBackendConfigured() && report.id
+    ? (await api.reports.getViewUrl(report.id)).signedUrl
+    : report.fileDataUrl;
+  if (url) window.open(url, "_blank", "noopener,noreferrer");
 }
 
 export default function Reports() {
+  const { user } = useSession();
+  const patientId = user ? getPatientId(user) : PATIENT_ID;
   const [uploadedReports, setUploadedReports] = useState(() =>
-    getPatientUploadedReports(PATIENT_ID)
+    isBackendConfigured() ? [] : getPatientUploadedReports(patientId)
   );
   const [form, setForm] = useState({
     title: "",
@@ -63,6 +70,16 @@ export default function Reports() {
   const [reindexingReportId, setReindexingReportId] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
+  const [loadingReports, setLoadingReports] = useState(isBackendConfigured());
+
+  useEffect(() => {
+    if (!isBackendConfigured()) return;
+    setLoadingReports(true);
+    api.reports.list(patientId)
+      .then(({ reports }) => setUploadedReports(reports as PatientUploadedReport[]))
+      .catch(() => setError("Reports could not be loaded. Retry to refresh."))
+      .finally(() => setLoadingReports(false));
+  }, [patientId]);
 
   const handleUpload = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -84,6 +101,32 @@ export default function Reports() {
 
     setUploading(true);
     try {
+      if (isBackendConfigured()) {
+        const upload = await api.reports.getUploadUrl({
+          patientId,
+          fileName: file.name,
+          fileType: file.type,
+          fileSize: file.size,
+        });
+        const uploadResponse = await fetch(upload.uploadUrl, {
+          method: "PUT",
+          headers: { "Content-Type": file.type },
+          body: file,
+        });
+        if (!uploadResponse.ok) throw new Error("Upload failed");
+        const { report } = await api.reports.create({
+          patientId,
+          title: form.title.trim(),
+          category: form.category,
+          reportDate: form.reportDate,
+          note: form.note.trim() || undefined,
+          fileName: file.name,
+          fileType: file.type,
+          fileSize: file.size,
+          storagePath: upload.storagePath,
+        });
+        setUploadedReports((current) => [report as PatientUploadedReport, ...current]);
+      } else {
       const fileDataUrl = await readFileAsDataUrl(file);
       const report: PatientUploadedReport = {
         id: `patient-report-${Date.now()}`,
@@ -103,6 +146,7 @@ export default function Reports() {
       };
       const reports = addPatientUploadedReport(report);
       setUploadedReports(reports.filter((item) => item.patientId === PATIENT_ID));
+      }
       setForm({ title: "", category: "blood_test", reportDate: "", note: "" });
       setFile(null);
       setFileInputKey((key) => key + 1);
@@ -118,6 +162,10 @@ export default function Reports() {
     setReindexingReportId(reportId);
     try {
       await getRagService().reindexReport(reportId);
+      if (isBackendConfigured()) {
+        setSuccessMessage("Report indexing has been queued.");
+        return;
+      }
       const reports = setPatientReportIndexingStatus(reportId, "indexing");
       setUploadedReports(reports.filter((item) => item.patientId === PATIENT_ID));
     } catch {
@@ -228,7 +276,9 @@ export default function Reports() {
           <Badge variant="default">{uploadedReports.length} uploaded</Badge>
         </div>
 
-        {uploadedReports.length === 0 ? (
+        {loadingReports ? (
+          <Card padding="md"><p className="text-sm text-slate-500">Loading reports…</p></Card>
+        ) : uploadedReports.length === 0 ? (
           <Card padding="md" className="text-center border-dashed border-slate-200 bg-slate-50">
             <p className="text-sm font-medium text-slate-700">No medical reports uploaded yet</p>
             <p className="text-xs text-slate-500 mt-1">Your first uploaded report will appear here.</p>

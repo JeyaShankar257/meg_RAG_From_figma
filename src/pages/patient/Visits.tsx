@@ -1,10 +1,23 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { DEMO_VISITS } from "../../lib/mockData";
+import { api, getPatientId, isBackendConfigured } from "../../lib/api/apiClient";
+import { useSession } from "../../lib/auth/SessionProvider";
 import Card from "../../components/ui/Card";
 import Badge from "../../components/ui/Badge";
 
 export default function PatientVisits() {
+  const { user } = useSession();
+  const [visits, setVisits] = useState<typeof DEMO_VISITS>(isBackendConfigured() ? [] : DEMO_VISITS);
+  const [loading, setLoading] = useState(isBackendConfigured());
+  const [error, setError] = useState("");
   const [expanded, setExpanded] = useState<string | null>("v-001");
+  useEffect(() => {
+    if (!isBackendConfigured() || !user) return;
+    api.patients.getVisits(getPatientId(user))
+      .then(({ visits: result }) => setVisits(result))
+      .catch(() => setError("Visits could not be loaded."))
+      .finally(() => setLoading(false));
+  }, [user]);
 
   return (
     <div className="p-4 lg:p-6 space-y-5 animate-fade-in">
@@ -20,10 +33,13 @@ export default function PatientVisits() {
         Clinical notes are shared according to your consent settings. Some details may be summarized.
       </div>
 
+      {loading && <p className="text-sm text-slate-500">Loading visits…</p>}
+      {error && <p className="text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded-lg p-3">{error}</p>}
+      {!loading && !error && visits.length === 0 && <p className="text-sm text-slate-500">No visits are available.</p>}
       <div className="relative">
         <div className="absolute left-4 top-0 bottom-0 w-0.5 bg-slate-200" />
         <div className="space-y-3">
-          {DEMO_VISITS.map((visit, i) => (
+          {visits.map((visit, i) => (
             <div key={visit.id} className="relative pl-12 animate-slide-in-up" style={{ animationDelay: `${i * 60}ms` } as React.CSSProperties}>
               <div className={`absolute left-2.5 top-4 w-3 h-3 rounded-full border-2 z-10 ${i === 0 ? "bg-teal-500 border-teal-500" : "bg-white border-slate-300"}`} />
               <Card hover onClick={() => setExpanded(expanded === visit.id ? null : visit.id)}>

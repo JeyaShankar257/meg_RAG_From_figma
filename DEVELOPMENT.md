@@ -62,6 +62,21 @@ Edit each `.env` file and fill in:
 
 ## 3. Set up Supabase
 
+The repository is initialized as a Supabase CLI project. For a local database,
+make sure Docker Desktop is running and use:
+
+```bash
+pnpm run supabase:start
+pnpm run supabase:status
+pnpm run supabase:db:reset
+```
+
+The reset command applies every migration under `supabase/migrations`. It is
+destructive to the local database only and should not be used against a hosted
+project.
+
+For a new hosted Supabase project:
+
 ```bash
 # Link to your Supabase project
 supabase login
@@ -73,6 +88,10 @@ supabase db push
 # (Optional) Load demo seed data
 pnpm --filter @mednova/api seed:demo
 ```
+
+Copy the hosted project's API URL, anon key, and service-role key into
+`apps/api/.env` and `apps/worker/.env` from `.env.example`. The service-role
+key is server-only and must never be placed in Vite variables or committed.
 
 ---
 
@@ -113,6 +132,20 @@ curl http://localhost:3001/health/ready
 curl http://localhost:8001/health/ready
 ```
 
+To verify the configured API and agent endpoints together without printing any
+credentials, run:
+
+```bash
+pnpm run verify:integration
+```
+
+For the isolated demo workflow (doctor session, patient session, protected
+reads, consent, and correction boundary), run:
+
+```bash
+pnpm run e2e:demo
+```
+
 ---
 
 ## 6. Run checks
@@ -131,6 +164,11 @@ pnpm typecheck
 
 # Python tests
 cd apps/agents && pytest
+
+# Formatting, all checks, and the demo workflow smoke test
+cd ../..
+pnpm run format:check
+pnpm run verify:ci
 ```
 
 The worker currently provides a lifecycle-only entrypoint. It validates
@@ -160,6 +198,7 @@ All variables accepted by `apps/api` and `apps/worker`:
 | `REPORTS_BUCKET_NAME` | | `medical-reports` | Supabase Storage bucket |
 | `SIGNED_URL_EXPIRY_SECONDS` | | `300` | Signed URL lifetime |
 | `RESEND_API_KEY` | ✓ | — | Resend API key |
+| `RESEND_WEBHOOK_SECRET` | | — | Svix/Resend signing secret used to authenticate delivery webhooks |
 | `RESEND_FROM_ADDRESS` | ✓ | — | Verified sender email |
 | `GEMINI_API_KEY` | ✓ | — | Gemini API key (server-only) |
 | `GEMINI_MODEL` | | `gemini-1.5-pro` | Model identifier |
@@ -171,3 +210,20 @@ All variables accepted by `apps/api` and `apps/worker`:
 
 > **Security**: Never log, commit, or expose `SERVICE_ROLE_KEY`, `RESEND_API_KEY`,
 > `GEMINI_API_KEY`, or `AGENTS_INTERNAL_SECRET`. All secrets stay server-side only.
+
+## Security review controls
+
+The API enforces the following controls before demo or production deployment:
+
+- Report upload, listing, review, and signed-link requests use the shared patient
+  authorization policy; storage paths must be scoped to the authorized patient.
+- Dose events are patient-owned, restricted to patient accounts, and validate the
+  schedule-to-patient relationship before insertion.
+- Prescription rejection requires an active doctor assignment, matching the
+  approval workflow.
+- Resend webhooks verify Svix signatures and timestamps when
+  `RESEND_WEBHOOK_SECRET` is configured outside demo mode, and terminal delivery
+  states cannot be downgraded by replayed events.
+
+The API/backend owner is responsible for keeping these checks covered by route
+tests when schema or provider integrations change.

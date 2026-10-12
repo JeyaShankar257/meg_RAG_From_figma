@@ -15,28 +15,40 @@ const app = new Hono<{
     Variables: { correlationId: string };
 }>();
 
-app.use("*", cors({ origin: config.corsAllowedOrigins }));
+app.use("*", cors({ origin: config.corsAllowedOrigins, credentials: true }));
 app.use("*", correlationMiddleware);
+
+import { authRouter } from "./routes/auth/index.js";
+import { patientsRouter } from "./routes/patients/index.js";
+import { careTeamRouter } from "./routes/careTeam/index.js";
+import { handleApiError } from "./lib/errors.js";
+
+import { webhooksRouter } from "./routes/webhooks/resend.js";
+import { dosesRouter } from "./routes/doses/index.js";
+import { prescriptionsRouter } from "./routes/prescriptions/index.js";
+import { reportsRouter } from "./routes/reports/index.js";
+import { correctionsRouter } from "./routes/corrections/index.js";
+import { auditRouter } from "./routes/audit/index.js";
 
 // ─── 3. Routes ────────────────────────────────────────────────────────────────
 app.route("/health", healthRouter);
+app.route("/auth", authRouter);
+app.route("/patients", patientsRouter);
+app.route("/care-team", careTeamRouter);
+app.route("/doses", dosesRouter);
+app.route("/prescriptions", prescriptionsRouter);
+app.route("/reports", reportsRouter);
+app.route("/corrections", correctionsRouter);
+app.route("/audit", auditRouter);
+app.route("/webhooks", webhooksRouter);
 
 // 404 fallback
 app.notFound((c) => {
-    return c.json({ error: "not_found" }, 404);
+    return c.json({ error: "not_found", message: "Resource not found" }, 404);
 });
 
-// Global error handler — never expose internals
-app.onError((err, c) => {
-    const correlationId = c.get("correlationId") as string | undefined;
-    logger.error("unhandled error", {
-        correlationId,
-        error: err.message,
-        // stack only in dev
-        ...(process.env["NODE_ENV"] !== "production" && { stack: err.stack }),
-    });
-    return c.json({ error: "internal_server_error", correlationId }, 500);
-});
+// Global error handler — safe non-clinical error responses
+app.onError(handleApiError);
 
 // ─── 4. Start server ──────────────────────────────────────────────────────────
 serve({ fetch: app.fetch, port: config.apiPort }, (info) => {

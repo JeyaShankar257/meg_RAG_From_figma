@@ -3,6 +3,7 @@ import Badge from "../../ui/Badge";
 import Card from "../../ui/Card";
 
 export default function RagAnalysisResult({ analysis }: { analysis: AIAnalysis }) {
+  const safetyFlags = Array.isArray(analysis.safetyFlags) ? analysis.safetyFlags : [];
   const uncertain =
     analysis.evidenceStatus === "insufficient" ||
     analysis.evidenceStatus === "conflicting" ||
@@ -29,10 +30,10 @@ export default function RagAnalysisResult({ analysis }: { analysis: AIAnalysis }
         </div>
       </div>
 
-      {analysis.safetyFlags.length > 0 && (
+      {safetyFlags.length > 0 && (
         <div className="bg-rose-50 border border-rose-200 rounded-lg p-3 mb-4">
           <p className="text-xs font-semibold text-rose-700 mb-1">Safety and uncertainty flags</p>
-          {analysis.safetyFlags.map((flag) => (
+          {safetyFlags.map((flag) => (
             <p key={flag} className="text-xs text-rose-600">· {flag}</p>
           ))}
         </div>

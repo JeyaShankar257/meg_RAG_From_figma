@@ -17,6 +17,8 @@ export interface EnvConfig {
     signedUrlExpirySeconds: number;
     resendApiKey: string;
     resendFromAddress: string;
+    geminiApiKey: string;
+    geminiModel: string;
     agentsServiceUrl: string;
     agentsInternalSecret: string;
     demoMode: boolean;
@@ -50,6 +52,7 @@ function requireInt(name: string, fallback?: number): number {
 
 export function validateEnv(): EnvConfig {
     const errors: string[] = [];
+    const demoMode = process.env["DEMO_MODE"] === "true";
 
     const collect = <T>(fn: () => T, key: string): T | undefined => {
         try {
@@ -69,22 +72,21 @@ export function validateEnv(): EnvConfig {
         () => requireEnv("SUPABASE_ANON_KEY"),
         "SUPABASE_ANON_KEY",
     );
-    const agentsServiceUrl = collect(
-        () => requireEnv("AGENTS_SERVICE_URL"),
-        "AGENTS_SERVICE_URL",
-    );
-    const agentsInternalSecret = collect(
-        () => requireEnv("AGENTS_INTERNAL_SECRET"),
-        "AGENTS_INTERNAL_SECRET",
-    );
-    const resendApiKey = collect(
-        () => requireEnv("RESEND_API_KEY"),
-        "RESEND_API_KEY",
-    );
-    const resendFromAddress = collect(
-        () => requireEnv("RESEND_FROM_ADDRESS"),
-        "RESEND_FROM_ADDRESS",
-    );
+    const agentsServiceUrl = demoMode
+        ? optionalEnv("AGENTS_SERVICE_URL", "http://localhost:8001")
+        : collect(() => requireEnv("AGENTS_SERVICE_URL"), "AGENTS_SERVICE_URL");
+    const agentsInternalSecret = demoMode
+        ? optionalEnv("AGENTS_INTERNAL_SECRET", "demo-agent-secret")
+        : collect(() => requireEnv("AGENTS_INTERNAL_SECRET"), "AGENTS_INTERNAL_SECRET");
+    const resendApiKey = demoMode
+        ? optionalEnv("RESEND_API_KEY", "demo-resend-key")
+        : collect(() => requireEnv("RESEND_API_KEY"), "RESEND_API_KEY");
+    const resendFromAddress = demoMode
+        ? optionalEnv("RESEND_FROM_ADDRESS", "demo@mednova.local")
+        : collect(() => requireEnv("RESEND_FROM_ADDRESS"), "RESEND_FROM_ADDRESS");
+    const geminiApiKey = demoMode
+        ? optionalEnv("GEMINI_API_KEY", "demo-gemini-key")
+        : collect(() => requireEnv("GEMINI_API_KEY"), "GEMINI_API_KEY");
 
     if (errors.length > 0) {
         console.error(
@@ -110,8 +112,7 @@ export function validateEnv(): EnvConfig {
     const corsAllowedOrigins = corsRaw.split(",").map((s) => s.trim());
     const reportsBucketName = optionalEnv("REPORTS_BUCKET_NAME", "medical-reports");
     const signedUrlExpirySeconds = requireInt("SIGNED_URL_EXPIRY_SECONDS", 300);
-    const demoMode = process.env["DEMO_MODE"] === "true";
-
+    const geminiModel = optionalEnv("GEMINI_MODEL", "gemini-1.5-pro");
     return {
         supabaseUrl: supabaseUrl!,
         supabaseServiceRoleKey: supabaseServiceRoleKey!,
@@ -123,6 +124,8 @@ export function validateEnv(): EnvConfig {
         signedUrlExpirySeconds,
         resendApiKey: resendApiKey!,
         resendFromAddress: resendFromAddress!,
+        geminiApiKey: geminiApiKey!,
+        geminiModel,
         agentsServiceUrl: agentsServiceUrl!,
         agentsInternalSecret: agentsInternalSecret!,
         demoMode,

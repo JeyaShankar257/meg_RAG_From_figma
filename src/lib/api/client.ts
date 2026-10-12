@@ -13,6 +13,7 @@ export class ApiError extends Error {
 }
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "/api").replace(/\/$/, "");
+const ACCESS_TOKEN_KEY = "mednova_access_token";
 
 interface ApiRequestOptions extends RequestInit {
   signal?: AbortSignal;
@@ -28,6 +29,9 @@ export async function requestJson<ResponseBody>(
     headers: {
       Accept: "application/json",
       ...(options.body ? { "Content-Type": "application/json" } : {}),
+      ...(localStorage.getItem(ACCESS_TOKEN_KEY)
+        ? { Authorization: `Bearer ${localStorage.getItem(ACCESS_TOKEN_KEY)}` }
+        : {}),
       ...options.headers,
     },
   });

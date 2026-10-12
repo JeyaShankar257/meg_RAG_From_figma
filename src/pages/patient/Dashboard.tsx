@@ -6,6 +6,30 @@ import Badge from "../../components/ui/Badge";
 import Button from "../../components/ui/Button";
 import AdherenceRing from "../../components/charts/AdherenceRing";
 import TrendSparkline from "../../components/charts/TrendSparkline";
+import { api, getPatientId, isBackendConfigured } from "../../lib/api/apiClient";
+import { useSession } from "../../lib/auth/SessionProvider";
+
+type PatientMedication = {
+  id: string;
+  medication: {
+    name: string;
+    strength: string;
+    unit: string;
+    frequency: string;
+    nextDose: string;
+  };
+};
+
+type AdherenceSummary = typeof DEMO_ADHERENCE;
+
+function summarizeAdherence(logs: Array<{ status?: string }>): AdherenceSummary {
+  const summary = { ...DEMO_ADHERENCE };
+  summary.taken = logs.filter((log) => log.status === "taken").length;
+  summary.late = logs.filter((log) => log.status === "late").length;
+  summary.missed = logs.filter((log) => log.status === "missed").length;
+  summary.skipped = logs.filter((log) => log.status === "skipped").length;
+  return summary;
+}
 
 function useCountdown(targetTime: string) {
   const [remaining, setRemaining] = useState("");
@@ -29,9 +53,50 @@ function useCountdown(targetTime: string) {
 }
 
 export default function PatientDashboard() {
+  const { user } = useSession();
   const navigate = useNavigate();
   const nextDose = useCountdown("19:00");
-  const activeMeds = DEMO_PRESCRIPTIONS.filter((rx) => rx.status === "active");
+  const [activeMeds, setActiveMeds] = useState<PatientMedication[]>(() =>
+    isBackendConfigured()
+      ? []
+      : DEMO_PRESCRIPTIONS.filter((rx) => rx.status === "active").map((rx) => ({
+          id: rx.id,
+          medication: {
+            name: rx.medication.name,
+            strength: rx.medication.strength,
+            unit: rx.medication.unit,
+            frequency: rx.medication.frequency,
+            nextDose: rx.medication.nextDose ?? "See dose schedule",
+          },
+        })),
+  );
+  const [adherence, setAdherence] = useState(DEMO_ADHERENCE);
+  const [loading, setLoading] = useState(isBackendConfigured());
+  const [error, setError] = useState("");
+  useEffect(() => {
+    if (!isBackendConfigured() || !user) return;
+    Promise.all([
+      api.patients.getMedications(getPatientId(user)),
+      api.patients.getAdherence(getPatientId(user)),
+    ])
+      .then(([medicationResult, adherenceResult]) => {
+        setActiveMeds(
+          medicationResult.medications.map((medication) => ({
+            id: String(medication.id),
+            medication: {
+              name: String(medication.name ?? "Medication"),
+              strength: String(medication.dosage ?? ""),
+              unit: "",
+              frequency: String(medication.form ?? ""),
+              nextDose: "See dose schedule",
+            },
+          })),
+        );
+        setAdherence(summarizeAdherence(adherenceResult.logs));
+      })
+      .catch(() => setError("Dashboard data could not be loaded."))
+      .finally(() => setLoading(false));
+  }, [user]);
 
   return (
     <div className="p-4 lg:p-6 space-y-5 animate-fade-in">
@@ -40,6 +105,8 @@ export default function PatientDashboard() {
         <h1 className="text-xl font-bold text-slate-900">Good morning, Marcus</h1>
         <p className="text-slate-500 text-sm">Saturday, September 12, 2026 · PT-00231</p>
       </div>
+      {loading && <p className="text-sm text-slate-500">Loading your care summary…</p>}
+      {error && <p className="text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded-lg p-3">{error}</p>}
 
       {/* Next dose countdown */}
       <div className="bg-gradient-to-r from-teal-600 to-teal-700 rounded-2xl p-5 text-white shadow-lg shadow-teal-600/20">
@@ -66,17 +133,17 @@ export default function PatientDashboard() {
       {/* Stats row */}
       <div className="grid grid-cols-3 gap-3">
         <Card padding="sm">
-          <div className="text-lg font-bold text-emerald-600">{DEMO_ADHERENCE.taken}</div>
+          <div className="text-lg font-bold text-emerald-600">{adherence.taken}</div>
           <div className="text-xs text-slate-500 mt-0.5">Taken</div>
           <div className="text-[10px] text-slate-400">Last 30 days</div>
         </Card>
         <Card padding="sm">
-          <div className="text-lg font-bold text-amber-500">{DEMO_ADHERENCE.late}</div>
+          <div className="text-lg font-bold text-amber-500">{adherence.late}</div>
           <div className="text-xs text-slate-500 mt-0.5">Late</div>
           <div className="text-[10px] text-slate-400">Last 30 days</div>
         </Card>
         <Card padding="sm">
-          <div className="text-lg font-bold text-rose-500">{DEMO_ADHERENCE.missed}</div>
+          <div className="text-lg font-bold text-rose-500">{adherence.missed}</div>
           <div className="text-xs text-slate-500 mt-0.5">Missed</div>
           <div className="text-[10px] text-slate-400">Last 30 days</div>
         </Card>

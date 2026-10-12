@@ -1,88 +1,226 @@
-import { useState } from "react";
-import Card from "../../components/ui/Card";
-import Button from "../../components/ui/Button";
-import Input, { Select } from "../../components/ui/Input";
+import { useEffect, useState } from "react"
+
+import Card from "../../components/ui/Card"
+
+import Button from "../../components/ui/Button"
+
+import Input, { Select } from "../../components/ui/Input"
+
+import { api, getPatientId, isBackendConfigured } from "../../lib/api/apiClient"
+
+import { useSession } from "../../lib/auth/SessionProvider"
 
 export default function PatientSettings() {
-  const [saved, setSaved] = useState(false);
+  const { user } = useSession()
 
-  const handleSave = () => {
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
-  };
+  const [saved, setSaved] = useState(false)
+
+  const [error, setError] = useState("")
+
+  const [loading, setLoading] = useState(isBackendConfigured())
+
+  const [preferences, setPreferences] = useState({
+    channel: "email" as "email" | "sms" | "push",
+
+    enabled: true,
+
+    quietHoursStart: "21:00",
+
+    quietHoursEnd: "07:00",
+  })
+
+  useEffect(() => {
+    if (!isBackendConfigured() || !user) return
+
+    api.patients
+      .getSettings(getPatientId(user))
+
+      .then(({ settings }) => {
+        const setting = settings.find(
+          (item) => typeof item === "object" && item !== null,
+        ) as {
+          channel?: "email" | "sms" | "push"
+          enabled?: boolean
+          quiet_hours_start?: string
+          quiet_hours_end?: string
+        } | undefined
+
+        if (setting) {
+          setPreferences((current) => ({
+            channel: setting.channel ?? current.channel,
+
+            enabled: setting.enabled ?? current.enabled,
+
+            quietHoursStart:
+              setting.quiet_hours_start?.slice(0, 5) ?? current.quietHoursStart,
+
+            quietHoursEnd:
+              setting.quiet_hours_end?.slice(0, 5) ?? current.quietHoursEnd,
+          }))
+        }
+      })
+
+      .catch(() => setError("Settings could not be loaded. Retry to refresh."))
+
+      .finally(() => setLoading(false))
+  }, [user])
+
+  const handleSave = async () => {
+    setError("")
+
+    if (isBackendConfigured() && user) {
+      try {
+        await api.patients.updateSettings(getPatientId(user), preferences)
+      } catch {
+        setError("Settings could not be saved. Try again.")
+        return
+      }
+    }
+
+    setSaved(true)
+
+    setTimeout(() => setSaved(false), 2000)
+  }
 
   return (
     <div className="p-4 lg:p-6 space-y-5 animate-fade-in">
       <div>
         <h1 className="text-xl font-bold text-slate-900">Settings</h1>
-        <p className="text-slate-500 text-sm">Manage your preferences and contact details.</p>
+        <p className="text-slate-500 text-sm">
+          Manage your preferences and contact details.
+        </p>
       </div>
+      {loading && (
+        <p className="text-sm text-slate-500">Loading your preferences…</p>
+      )}
+      {error && (
+        <p className="text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded-lg p-3">
+          {error}
+        </p>
+      )}
 
       <Card padding="md">
         <h2 className="text-sm font-semibold text-slate-800 mb-4">Profile</h2>
         <div className="flex items-center gap-4 mb-4">
-          <div className="w-12 h-12 rounded-full bg-teal-100 flex items-center justify-center text-teal-700 font-bold text-lg">MR</div>
+          <div className="w-12 h-12 rounded-full bg-teal-100 flex items-center justify-center text-teal-700 font-bold text-lg">
+            MR
+          </div>
           <div>
-            <p className="text-sm font-semibold text-slate-900">Marcus Rivera</p>
+            <p className="text-sm font-semibold text-slate-900">
+              Marcus Rivera
+            </p>
             <p className="text-xs text-slate-500 font-mono">PT-00231</p>
           </div>
         </div>
         <div className="grid sm:grid-cols-2 gap-4">
-          <Input label="Email" type="email" defaultValue="m.rivera@email.com" />
+          <Input
+            label="Email"
+            type="email"
+            defaultValue={user?.email ?? "m.rivera@email.com"}
+          />
           <Input label="Phone" type="tel" defaultValue="+1 (555) 204-3817" />
         </div>
       </Card>
 
       <Card padding="md">
-        <h2 className="text-sm font-semibold text-slate-800 mb-4">Reminder Preferences</h2>
+        <h2 className="text-sm font-semibold text-slate-800 mb-4">
+          Reminder Preferences
+        </h2>
         <div className="space-y-4">
           <Select
             label="Time Zone"
             defaultValue="America/Chicago"
             options={[
               { value: "America/Chicago", label: "Central Time (CT)" },
+
               { value: "America/New_York", label: "Eastern Time (ET)" },
+
               { value: "America/Los_Angeles", label: "Pacific Time (PT)" },
             ]}
           />
           <div>
-            <p className="text-sm font-medium text-slate-700 mb-2">Quiet Hours</p>
+            <p className="text-sm font-medium text-slate-700 mb-2">
+              Quiet Hours
+            </p>
             <div className="grid grid-cols-2 gap-3">
-              <Input label="Start" type="time" defaultValue="21:00" />
-              <Input label="End" type="time" defaultValue="07:00" />
+              <Input
+                label="Start"
+                type="time"
+                value={preferences.quietHoursStart}
+                onChange={(event) =>
+                  setPreferences({
+                    ...preferences,
+                    quietHoursStart: event.target.value,
+                  })
+                }
+              />
+              <Input
+                label="End"
+                type="time"
+                value={preferences.quietHoursEnd}
+                onChange={(event) =>
+                  setPreferences({
+                    ...preferences,
+                    quietHoursEnd: event.target.value,
+                  })
+                }
+              />
             </div>
           </div>
         </div>
       </Card>
 
       <Card padding="md">
-        <h2 className="text-sm font-semibold text-slate-800 mb-3">Communication</h2>
+        <h2 className="text-sm font-semibold text-slate-800 mb-3">
+          Communication
+        </h2>
         <div className="space-y-3">
           {[
             { label: "Email dose reminders", checked: true },
+
             { label: "Weekly report emails", checked: true },
+
             { label: "Monthly report emails", checked: true },
+
             { label: "Care team messages", checked: true },
           ].map((item) => (
-            <label key={item.label} className="flex items-center justify-between cursor-pointer">
+            <label
+              key={item.label}
+              className="flex items-center justify-between cursor-pointer"
+            >
               <span className="text-sm text-slate-700">{item.label}</span>
-              <input type="checkbox" defaultChecked={item.checked} className="rounded border-slate-300 text-teal-600" />
+              <input
+                type="checkbox"
+                defaultChecked={item.checked}
+                className="rounded border-slate-300 text-teal-600"
+              />
             </label>
           ))}
         </div>
       </Card>
 
       <Card padding="md">
-        <h2 className="text-sm font-semibold text-slate-800 mb-3">Accessibility</h2>
+        <h2 className="text-sm font-semibold text-slate-800 mb-3">
+          Accessibility
+        </h2>
         <div className="space-y-3">
           {[
             { label: "High contrast mode", checked: false },
+
             { label: "Large text mode", checked: false },
+
             { label: "Reduced motion", checked: false },
           ].map((item) => (
-            <label key={item.label} className="flex items-center justify-between cursor-pointer">
+            <label
+              key={item.label}
+              className="flex items-center justify-between cursor-pointer"
+            >
               <span className="text-sm text-slate-700">{item.label}</span>
-              <input type="checkbox" defaultChecked={item.checked} className="rounded border-slate-300 text-teal-600" />
+              <input
+                type="checkbox"
+                defaultChecked={item.checked}
+                className="rounded border-slate-300 text-teal-600"
+              />
             </label>
           ))}
         </div>
@@ -95,5 +233,5 @@ export default function PatientSettings() {
         <Button variant="secondary">Cancel</Button>
       </div>
     </div>
-  );
+  )
 }

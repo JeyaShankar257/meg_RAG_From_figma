@@ -1,0 +1,46 @@
+name: MedNova verification
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      DEMO_MODE: "true"
+      SUPABASE_URL: "https://demo.supabase.co"
+      SUPABASE_SERVICE_ROLE_KEY: "demo-service-role-key"
+      SUPABASE_ANON_KEY: "demo-anon-key"
+      RESEND_API_KEY: "demo-resend-key"
+      RESEND_FROM_ADDRESS: "demo@mednova.local"
+      GEMINI_API_KEY: "demo-gemini-key"
+      AGENTS_SERVICE_URL: "http://localhost:8001"
+      AGENTS_INTERNAL_SECRET: "demo-agent-secret"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run format:check
+      - run: pnpm typecheck
+      - run: pnpm --filter @mednova/api typecheck
+      - run: pnpm --filter @mednova/worker typecheck
+      - run: pnpm --filter @mednova/api test
+      - run: pnpm --filter @mednova/worker test
+      - run: python -m pip install -e "apps/agents[dev]"
+      - run: python -m pytest apps/agents/tests -q
+      - run: pnpm build
+      - run: pnpm --filter @mednova/api start > api.log 2>&1 &
+      - run: sleep 5 && pnpm run e2e:demo

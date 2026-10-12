@@ -45,12 +45,13 @@ export default function RetrievedEvidence({
   status = evidence.length > 0 ? "sufficient" : "insufficient",
   demo = false,
 }: RetrievedEvidenceProps) {
+  const safeEvidence = Array.isArray(evidence) ? evidence : [];
   const [expanded, setExpanded] = useState(false);
-  const content = STATUS_CONTENT[status];
-  const clinicalCount = evidence.filter((item) =>
+  const content = STATUS_CONTENT[status] ?? STATUS_CONTENT.insufficient;
+  const clinicalCount = safeEvidence.filter((item) =>
     ["guideline", "research", "medication_reference"].includes(item.sourceType)
   ).length;
-  const patientCount = evidence.length - clinicalCount;
+  const patientCount = safeEvidence.length - clinicalCount;
 
   return (
     <Card padding="none" className="overflow-hidden border-cyan-200">
@@ -59,7 +60,7 @@ export default function RetrievedEvidence({
           <div>
             <div className="flex items-center gap-2 flex-wrap">
               <p className="text-sm font-semibold text-slate-900">Retrieved Evidence</p>
-              <Badge variant="info">{evidence.length} source{evidence.length === 1 ? "" : "s"}</Badge>
+              <Badge variant="info">{safeEvidence.length} source{safeEvidence.length === 1 ? "" : "s"}</Badge>
               <Badge variant={content.variant}>{content.label}</Badge>
               {demo && <Badge variant="outline">Demo evidence</Badge>}
             </div>
@@ -101,12 +102,12 @@ export default function RetrievedEvidence({
 
       {expanded && (
         <div className="p-5 space-y-3 animate-fade-in">
-          {evidence.length === 0 ? (
+          {safeEvidence.length === 0 ? (
             <div className="text-center py-5">
               <p className="text-sm font-medium text-slate-700">No eligible evidence retrieved</p>
               <p className="text-xs text-slate-500 mt-1">Review the patient record or request additional information.</p>
             </div>
-          ) : evidence.map((item, index) => (
+          ) : safeEvidence.map((item, index) => (
             <div key={`${item.sourceId}-${item.chunkId ?? index}`} className="rounded-xl border border-slate-200 bg-white p-4">
               <div className="flex items-start justify-between gap-3 flex-wrap">
                 <div className="min-w-0">
