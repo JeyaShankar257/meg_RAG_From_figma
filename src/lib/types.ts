@@ -275,3 +275,187 @@ export interface SparklinePoint {
   date: string;
   value: number;
 }
+
+// ─── Pipeline Types (Doctor Portal Backend) ──────────────────────────────────
+
+export type PipelineRunStatus = "pending" | "running" | "completed" | "failed";
+
+export type PipelineStageKey =
+  | "reminder_agent"
+  | "dose_logging_agent"
+  | "pattern_detection_agent"
+  | "escalation_agent"
+  | "care_team_interaction_agent";
+
+export type PipelineStageStatus =
+  | "idle"
+  | "running"
+  | "complete"
+  | "error"
+  | "retrying";
+
+export type PipelineLogLevel = "info" | "warn" | "error";
+
+export interface PipelineRun {
+  id: string;
+  patientId: string;
+  workspaceId: string;
+  triggerType: string;
+  triggerId?: string;
+  status: PipelineRunStatus;
+  correlationId: string;
+  createdAt: string;
+  startedAt?: string;
+  completedAt?: string;
+  lastError?: string;
+}
+
+export interface PipelineStageDurable {
+  id: string;
+  pipelineRunId: string;
+  stageKey: PipelineStageKey;
+  status: PipelineStageStatus;
+  agentName: string;
+  attempt: number;
+  lastJobId?: string;
+  startedAt?: string;
+  completedAt?: string;
+  lastError?: string;
+  updatedAt: string;
+}
+
+export interface PipelineStageLogEntry {
+  id: string;
+  pipelineStageId: string;
+  jobId?: string;
+  level: PipelineLogLevel;
+  message: string;
+  metadata?: Record<string, string | number | boolean>;
+  correlationId?: string;
+  createdAt: string;
+}
+
+export const PIPELINE_STAGE_DISPLAY: Record<PipelineStageKey, string> = {
+  reminder_agent: "Reminder Agent",
+  dose_logging_agent: "Dose Logging Agent",
+  pattern_detection_agent: "Pattern Detection Agent",
+  escalation_agent: "Escalation Agent",
+  care_team_interaction_agent: "Care Team Interaction",
+};
+
+// ─── Doctor Dashboard Aggregates ──────────────────────────────────────────────
+
+export type MetricAvailability = "available" | "unavailable" | "error";
+
+export interface DashboardMetric<T> {
+  value: T;
+  availability: MetricAvailability;
+  errorMessage?: string;
+}
+
+export interface DashboardActivity {
+  id: string;
+  type: string;
+  description: string;
+  patientId?: string;
+  patientName?: string;
+  timestamp: string;
+  correlationId?: string;
+}
+
+export interface DoctorDashboardResponse {
+  patientCount: DashboardMetric<number>;
+  averageAdherence: DashboardMetric<number>;
+  openEscalations: DashboardMetric<number>;
+  remindersDelivered: DashboardMetric<number>;
+  recentActivity: DashboardActivity[];
+  freshnessTimestamp: string;
+  correlationId: string;
+}
+
+// ─── Pipeline Status & Logs Response ──────────────────────────────────────────
+
+export interface PipelineStageWithLogs extends PipelineStageDurable {
+  logs: PipelineStageLogEntry[];
+}
+
+export interface PatientPipelineResponse {
+  run: PipelineRun | null;
+  stages: PipelineStageWithLogs[];
+  correlationId: string;
+}
+
+// ─── Approval Payloads ────────────────────────────────────────────────────────
+
+export interface ApprovalSuggestionData {
+  analysisId?: string;
+  name: string;
+  genericName: string;
+  strength: string;
+  unit: string;
+  frequency: string;
+  quantity: number;
+  days: number;
+  instructions: string;
+  reasoning: string;
+  citations: Array<{ id: string; title: string; publisher: string }>;
+}
+
+export interface ApprovalRequest {
+  idempotencyKey: string;
+  suggestion: ApprovalSuggestionData;
+  editedValues?: Record<string, unknown>;
+}
+
+export interface ApprovalResponse {
+  success: boolean;
+  prescription: Prescription;
+  revision?: PrescriptionRevision;
+  pipelineRunId?: string;
+  correlationId: string;
+  isDuplicate?: boolean;
+}
+
+// ─── Doctor Preferences ───────────────────────────────────────────────────────
+
+export interface DoctorNotificationPreferences {
+  channels: Array<"email" | "sms" | "push">;
+  quietHoursStart?: string;
+  quietHoursEnd?: string;
+}
+
+export interface DoctorProfilePreferences {
+  displayName?: string;
+  specialty?: string;
+  phone?: string;
+  notification: DoctorNotificationPreferences;
+}
+
+export interface DoctorSettingsResponse {
+  profile: {
+    id: string;
+    fullName: string;
+    email: string;
+    role: UserRole;
+  };
+  preferences: DoctorProfilePreferences;
+  correlationId: string;
+}
+
+// ─── Typed Recoverable API Errors ─────────────────────────────────────────────
+
+export type RecoverableErrorCode =
+  | "validation_error"
+  | "authorization_error"
+  | "not_found"
+  | "conflict"
+  | "service_unavailable"
+  | "internal_error";
+
+export interface RecoverableApiError {
+  error: RecoverableErrorCode;
+  message: string;
+  correlationId: string;
+  retryable: boolean;
+  details?: Array<{ path: string; message: string }>;
+}

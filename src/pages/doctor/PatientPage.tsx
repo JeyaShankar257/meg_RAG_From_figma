@@ -292,23 +292,54 @@ export default function PatientPage() {
     setReindexingReportId(reportId);
     try {
       await getRagService().reindexReport(reportId);
-      const reports = setPatientReportIndexingStatus(reportId, "indexing");
-      setPatientReports(reports.filter((report) => report.patientId === patient.id));
+      if (isBackendConfigured()) {
+        setPatientReports((current) =>
+          current.map((item) =>
+            item.id === reportId
+              ? { ...item, indexingStatus: "indexing", indexingError: undefined }
+              : item
+          )
+        );
+      } else {
+        const reports = setPatientReportIndexingStatus(reportId, "indexing");
+        setPatientReports(reports.filter((report) => report.patientId === patient.id));
+      }
     } catch {
-      const reports = setPatientReportIndexingStatus(
-        reportId,
-        "failed",
-        "Indexing retry could not be started.",
-      );
-      setPatientReports(reports.filter((report) => report.patientId === patient.id));
+      if (isBackendConfigured()) {
+        setPatientReports((current) =>
+          current.map((item) =>
+            item.id === reportId
+              ? {
+                  ...item,
+                  indexingStatus: "failed",
+                  indexingError: "Indexing retry could not be started.",
+                }
+              : item
+          )
+        );
+      } else {
+        const reports = setPatientReportIndexingStatus(
+          reportId,
+          "failed",
+          "Indexing retry could not be started.",
+        );
+        setPatientReports(reports.filter((report) => report.patientId === patient.id));
+      }
     } finally {
       setReindexingReportId(null);
     }
   };
 
   const handleTabChange = (tab: string) => {
-    if (tab === "Reports" && !isBackendConfigured()) {
-      setPatientReports(getPatientUploadedReports(patient.id));
+    if (tab === "Reports") {
+      if (isBackendConfigured()) {
+        api.reports
+          .list(patient.id)
+          .then(({ reports }) => setPatientReports(reports as PatientUploadedReport[]))
+          .catch(() => setDataError("Failed to refresh reports"));
+      } else {
+        setPatientReports(getPatientUploadedReports(patient.id));
+      }
     }
     setActiveTab(tab);
   };

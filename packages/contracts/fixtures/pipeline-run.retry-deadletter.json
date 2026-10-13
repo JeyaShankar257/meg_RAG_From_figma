@@ -1,0 +1,65 @@
+{
+  "description": "Contract fixture: pipeline run with retry and dead-letter stage outcomes",
+  "run": {
+    "id": "run-fixture-002",
+    "patientId": "p-002",
+    "workspaceId": "a0000000-0000-0000-0000-000000000001",
+    "triggerType": "prescription_approval",
+    "triggerId": "rx-fixture-002",
+    "status": "failed",
+    "correlationId": "corr-fixture-002",
+    "createdAt": "2026-10-02T08:00:00.000Z",
+    "startedAt": "2026-10-02T08:00:01.000Z",
+    "lastError": "Escalation agent exhausted retries"
+  },
+  "stages": [
+    {
+      "stageKey": "reminder_agent",
+      "status": "complete",
+      "agentName": "Reminder Agent",
+      "attempt": 1,
+      "completedAt": "2026-10-02T08:00:10.000Z",
+      "logs": [
+        { "level": "info", "message": "Schedule generated", "correlationId": "corr-fixture-002" }
+      ]
+    },
+    {
+      "stageKey": "dose_logging_agent",
+      "status": "complete",
+      "agentName": "Dose Logging Agent",
+      "attempt": 1,
+      "completedAt": "2026-10-02T08:01:00.000Z",
+      "logs": []
+    },
+    {
+      "stageKey": "pattern_detection_agent",
+      "status": "complete",
+      "agentName": "Pattern Detection Agent",
+      "attempt": 2,
+      "completedAt": "2026-10-02T08:05:00.000Z",
+      "logs": [
+        { "level": "warn", "message": "First attempt timed out, retrying", "correlationId": "corr-fixture-002" },
+        { "level": "info", "message": "Analysis completed on retry", "correlationId": "corr-fixture-002" }
+      ]
+    },
+    {
+      "stageKey": "escalation_agent",
+      "status": "error",
+      "agentName": "Escalation Agent",
+      "attempt": 5,
+      "lastError": "Service unavailable after 5 attempts",
+      "logs": [
+        { "level": "warn", "message": "Attempt 1 failed: connection timeout", "correlationId": "corr-fixture-002" },
+        { "level": "warn", "message": "Attempt 2 failed: connection timeout", "correlationId": "corr-fixture-002" },
+        { "level": "error", "message": "Dead-letter: exhausted max attempts (5)", "correlationId": "corr-fixture-002" }
+      ]
+    },
+    {
+      "stageKey": "care_team_interaction_agent",
+      "status": "idle",
+      "agentName": "Care Team Interaction Agent",
+      "attempt": 0,
+      "logs": []
+    }
+  ]
+}

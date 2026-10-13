@@ -1,0 +1,5 @@
+{
+  "description": "Contract fixture: empty pipeline — no runs exist for this patient",
+  "run": null,
+  "stages": []
+}

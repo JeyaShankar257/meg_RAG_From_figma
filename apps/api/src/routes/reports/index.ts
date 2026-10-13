@@ -300,3 +300,61 @@ reportsRouter.patch("/:id/review", requireRole("doctor"), async (c) => {
 
     return c.json({ success: true, report: updated });
 });
+
+// ─── 6. Reindex Report (POST /reports/:id/reindex) (Task 4.4) ────────────────
+reportsRouter.post("/:id/reindex", requireRole("doctor", "admin"), async (c) => {
+    const user = c.get("user");
+    const reportId = c.req.param("id");
+    const correlationId = (c.get("correlationId") as string) || "corr-" + Date.now();
+    const admin = getAdminClient();
+
+    const { data: report, error } = await admin
+        .from("patient_reports")
+        .select("id, patient_id, storage_path, label, mime_type, patients!inner (workspace_id)")
+        .eq("id", reportId)
+        .single();
+
+    if (error || !report) throw ApiError.notFound("Report not found");
+
+    const patient = (report as any).patients;
+    if (patient.workspace_id !== user.workspaceId) throw ApiError.notFound("Report not found");
+
+    // Verify doctor has access to this patient
+    await assertReportAccess(user, report.patient_id);
+
+    // Update indexing status to 'indexing'
+    await admin
+        .from("patient_reports")
+        .update({ indexing_status: "indexing" })
+        .eq("id", reportId);
+
+    // Enqueue durable index_uploaded_report job
+    const idempotencyKey = `reindex_${reportId}_${Date.now()}`;
+    await admin.from("jobs").insert({
+        type: "index_uploaded_report",
+        payload: {
+            reportId,
+            patientId: report.patient_id,
+            workspaceId: user.workspaceId,
+            storagePath: report.storage_path,
+            filename: report.label,
+            mimeType: report.mime_type,
+        },
+        idempotency_key: idempotencyKey,
+        correlation_id: correlationId,
+        status: "pending",
+    });
+
+    await admin.from("audit_events").insert({
+        workspace_id: user.workspaceId,
+        actor_profile_id: user.profileId,
+        action: "reindex_patient_report",
+        target_type: "patient_report",
+        target_id: reportId,
+        correlation_id: correlationId,
+        outcome: "success",
+    });
+
+    return c.json({ status: "indexing" });
+});
+

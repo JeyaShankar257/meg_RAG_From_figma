@@ -12,7 +12,7 @@ export class ApiError extends Error {
   }
 }
 
-const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "/api").replace(/\/$/, "");
+const API_BASE_URL = (import.meta.env?.VITE_API_BASE_URL ?? "/api").replace(/\/$/, "");
 const ACCESS_TOKEN_KEY = "mednova_access_token";
 
 interface ApiRequestOptions extends RequestInit {

@@ -1,0 +1,176 @@
+{
+  "workspaceId": "a0000000-0000-0000-0000-000000000001",
+  "embeddingModel": "text-embedding-004",
+  "embeddingVersion": "1",
+  "embeddingDimension": 768,
+  "sources": [
+    {
+      "id": "ks-guide-001",
+      "sourceType": "guideline",
+      "title": "ADA 2024 Standards of Care: Type 2 Diabetes Glycemic Targets",
+      "publisher": "American Diabetes Association",
+      "publicationDate": "2024-01-01",
+      "url": "https://diabetesjournals.org/care/issue/47/Supplement_1",
+      "workspaceId": "a0000000-0000-0000-0000-000000000001",
+      "patientId": null,
+      "version": "2024.1",
+      "status": "reviewed",
+      "metadata": {
+        "specialty": "Endocrinology",
+        "evidenceGrade": "A"
+      },
+      "chunks": [
+        {
+          "id": "kc-guide-001-1",
+          "chunkIndex": 0,
+          "chunkText": "For nonpregnant adults with diabetes without significant hypoglycemia, an HbA1c target of <7.0% (53 mmol/mol) is recommended. Less stringent targets (<8.0%) may be appropriate for individuals with limited life expectancy or advanced complications.",
+          "embeddingPattern": "diabetes_guideline_target"
+        }
+      ]
+    },
+    {
+      "id": "ks-res-002",
+      "sourceType": "research",
+      "title": "NEJM Study: ACE Inhibitor Induced Cough Prevalence and Management",
+      "publisher": "New England Journal of Medicine",
+      "publicationDate": "2023-06-15",
+      "url": "https://www.nejm.org/doi/full/10.1056/NEJMoa2301234",
+      "workspaceId": "a0000000-0000-0000-0000-000000000001",
+      "patientId": null,
+      "version": "1.0",
+      "status": "reviewed",
+      "metadata": {
+        "peerReviewed": true,
+        "sampleSize": 4500
+      },
+      "chunks": [
+        {
+          "id": "kc-res-002-1",
+          "chunkIndex": 0,
+          "chunkText": "ACE inhibitor-induced cough occurs in 5% to 35% of patients. It is characteristically dry, persistent, and not dose-dependent. Discontinuation of the ACE inhibitor typically resolves symptoms within 1 to 4 weeks. Switching to an angiotensin receptor blocker (ARB) such as Losartan is safe and rarely causes cough recurrence.",
+          "embeddingPattern": "ace_inhibitor_cough"
+        }
+      ]
+    },
+    {
+      "id": "ks-med-003",
+      "sourceType": "medication_reference",
+      "title": "Clinical Pharmacology: Lisinopril Adverse Reactions & Cross-Reactivity",
+      "publisher": "National Library of Medicine / DailyMed",
+      "publicationDate": "2023-11-20",
+      "url": "https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=lisinopril",
+      "workspaceId": "a0000000-0000-0000-0000-000000000001",
+      "patientId": null,
+      "version": "3.2",
+      "status": "reviewed",
+      "metadata": {
+        "drugClass": "ACE Inhibitor",
+        "rxNormId": "29046"
+      },
+      "chunks": [
+        {
+          "id": "kc-med-003-1",
+          "chunkIndex": 0,
+          "chunkText": "Lisinopril is indicated for the treatment of hypertension. Common adverse effects include dizziness, headache, and persistent dry cough mediated by bradykinin accumulation. Concomitant use with NSAIDs may reduce antihypertensive efficacy and increase risk of renal impairment.",
+          "embeddingPattern": "lisinopril_pharmacology"
+        }
+      ]
+    },
+    {
+      "id": "ks-visit-004",
+      "sourceType": "patient_visit",
+      "title": "Patient Visit Summary 2024-03-12: Persistent Dry Cough Evaluation",
+      "publisher": "MedNova Clinical Care",
+      "publicationDate": "2024-03-12",
+      "url": null,
+      "workspaceId": "a0000000-0000-0000-0000-000000000001",
+      "patientId": "p-001",
+      "version": "1.0",
+      "status": "reviewed",
+      "metadata": {
+        "visitId": "v-001",
+        "attendingDoctorId": "profile-doc-1"
+      },
+      "chunks": [
+        {
+          "id": "kc-visit-004-1",
+          "chunkIndex": 0,
+          "chunkText": "Patient Marcus Rivera presents with 3-week history of dry, non-productive nocturnal cough starting 2 weeks after initiation of Lisinopril 20mg daily for hypertension. Afebrile, clear lungs bilaterally, no signs of upper respiratory infection.",
+          "embeddingPattern": "patient_marcus_visit"
+        }
+      ]
+    },
+    {
+      "id": "ks-rep-005",
+      "sourceType": "patient_report",
+      "title": "Comprehensive Metabolic Panel Lab Report (Quest Diagnostics)",
+      "publisher": "Quest Diagnostics",
+      "publicationDate": "2024-03-10",
+      "url": null,
+      "workspaceId": "a0000000-0000-0000-0000-000000000001",
+      "patientId": "p-001",
+      "reportId": "report-001",
+      "version": "1.0",
+      "status": "reviewed",
+      "metadata": {
+        "labName": "Quest Diagnostics",
+        "sharedWithCareTeam": true,
+        "allowAiAnalysis": true
+      },
+      "chunks": [
+        {
+          "id": "kc-rep-005-1",
+          "chunkIndex": 0,
+          "chunkText": "Comprehensive Metabolic Panel: Serum Creatinine 1.05 mg/dL (normal 0.70-1.30), eGFR 88 mL/min/1.73m2, Serum Potassium 4.6 mEq/L (normal 3.5-5.0), Fasting Blood Glucose 118 mg/dL.",
+          "embeddingPattern": "patient_marcus_lab_report"
+        }
+      ]
+    },
+    {
+      "id": "ks-draft-006",
+      "sourceType": "guideline",
+      "title": "Unreviewed Draft: Experimental Hypertension Protocol",
+      "publisher": "Internal Drafts",
+      "publicationDate": "2024-04-01",
+      "url": null,
+      "workspaceId": "a0000000-0000-0000-0000-000000000001",
+      "patientId": null,
+      "version": "0.1",
+      "status": "draft",
+      "metadata": {
+        "unreviewed": true
+      },
+      "chunks": [
+        {
+          "id": "kc-draft-006-1",
+          "chunkIndex": 0,
+          "chunkText": "Draft experimental dosage recommendations pending clinical committee peer review.",
+          "embeddingPattern": "unreviewed_draft_guideline"
+        }
+      ]
+    },
+    {
+      "id": "ks-patient-other-007",
+      "sourceType": "patient_visit",
+      "title": "Other Patient Visit: Confidential Clinical Record",
+      "publisher": "MedNova Clinical Care",
+      "publicationDate": "2024-02-14",
+      "url": null,
+      "workspaceId": "a0000000-0000-0000-0000-000000000001",
+      "patientId": "p-002",
+      "version": "1.0",
+      "status": "reviewed",
+      "metadata": {
+        "patientId": "p-002"
+      },
+      "chunks": [
+        {
+          "id": "kc-patient-other-007-1",
+          "chunkIndex": 0,
+          "chunkText": "Patient Amara Osei cardiology consultation note regarding beta-blocker titration.",
+          "embeddingPattern": "patient_amara_visit"
+        }
+      ]
+    }
+  ]
+}
