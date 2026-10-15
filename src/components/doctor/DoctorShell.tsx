@@ -2,7 +2,7 @@ import { NavLink, Outlet, useNavigate } from "react-router-dom"
 
 import { useSession } from "../../lib/auth/SessionProvider"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 
 import { DEMO_ESCALATIONS, DEMO_PATIENTS } from "../../lib/mockData"
 import { api, isBackendConfigured } from "../../lib/api/apiClient"
@@ -29,7 +29,7 @@ const navItems = [
 export default function DoctorShell() {
   const navigate = useNavigate()
 
-  const { signOut } = useSession()
+  const { user, signOut } = useSession()
 
   const [notifOpen, setNotifOpen] = useState(false)
 
@@ -37,35 +37,49 @@ export default function DoctorShell() {
     isBackendConfigured() ? [] : DEMO_PATIENTS,
   )
   const [patientsLoading, setPatientsLoading] = useState(isBackendConfigured())
+  const [sidebarError, setSidebarError] = useState("")
   const [escalationCount, setEscalationCount] = useState(() =>
     isBackendConfigured()
       ? 0
       : DEMO_ESCALATIONS.filter((e) => e.status === "open").length,
   )
 
-  useEffect(() => {
+  const loadSidebarData = useCallback(() => {
     if (!isBackendConfigured()) return
-    api.patients
-      .list()
-      .then(({ patients: result }) => setPatients(result))
-      .catch(() => {
-        /* sidebar gracefully stays empty */
-      })
-      .finally(() => setPatientsLoading(false))
-    api.escalations
-      .list()
-      .then(({ escalations }) => {
-        const open = (escalations as Array<{ status?: string }>).filter(
-          (e) => e.status === "open",
-        )
+    setPatientsLoading(true)
+    setSidebarError("")
+
+    Promise.all([api.patients.list(), api.escalations.list()])
+      .then(([patientsResult, escalationsResult]) => {
+        setPatients(patientsResult.patients)
+        const open = (escalationsResult.escalations as Array<{
+          status?: string
+        }>).filter((e) => e.status === "open")
         setEscalationCount(open.length)
       })
-      .catch(() => {
-        /* escalation badge stays at 0 */
+      .catch((err) => {
+        setSidebarError(err?.message || "Failed to load assigned patients.")
       })
+      .finally(() => setPatientsLoading(false))
   }, [])
 
+  useEffect(() => {
+    loadSidebarData()
+  }, [loadSidebarData])
+
   const openEscalations = escalationCount
+
+  const doctorName = user?.fullName || "Dr. Jeya Shankar M"
+  const doctorInitials =
+    doctorName
+      .replace(/^Dr\.\s*/i, "")
+      .split(" ")
+      .map((n) => n[0])
+      .slice(0, 2)
+      .join("") || "DR"
+  const workspaceLabel = user?.workspaceId
+    ? `Workspace: ${user.workspaceId.slice(0, 8)}…`
+    : "MedNova Clinic"
 
   return (
     <div className="flex h-screen bg-slate-50 overflow-hidden">
@@ -99,13 +113,15 @@ export default function DoctorShell() {
         <div className="px-4 py-3 border-b border-slate-100">
           <div className="flex items-center gap-3 p-2.5 rounded-lg bg-teal-50">
             <div className="w-8 h-8 rounded-full bg-teal-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
-              SC
+              {doctorInitials}
             </div>
             <div className="min-w-0">
               <div className="text-sm font-semibold text-slate-900 truncate">
-                Dr. Jeya Shankar M
+                {doctorName}
               </div>
-              <div className="text-xs text-slate-500">Internal Medicine</div>
+              <div className="text-xs text-slate-500 truncate">
+                {workspaceLabel}
+              </div>
             </div>
           </div>
         </div>
@@ -133,6 +149,22 @@ export default function DoctorShell() {
             </p>
             {patientsLoading && (
               <p className="px-3 py-2 text-[10px] text-slate-400">Loading…</p>
+            )}
+            {sidebarError && (
+              <div className="mx-2 my-1.5 p-2 rounded bg-rose-50 border border-rose-200 text-rose-700 text-xs">
+                <p className="font-semibold text-[11px]">Failed to load</p>
+                <button
+                  onClick={loadSidebarData}
+                  className="mt-1 text-[11px] underline font-medium text-rose-800 hover:text-rose-900 block"
+                >
+                  Retry
+                </button>
+              </div>
+            )}
+            {!patientsLoading && !sidebarError && patients.length === 0 && (
+              <p className="px-3 py-2 text-[10px] text-slate-400">
+                No assigned patients
+              </p>
             )}
             {patients.map((p) => (
               <NavLink

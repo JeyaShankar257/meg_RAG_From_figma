@@ -6,10 +6,18 @@ import {
   DEMO_PRESCRIPTIONS,
   DEMO_VISITS,
 } from "../mockData"
-import type { Patient } from "../types"
-import type { Prescription, Visit } from "../types"
+import type {
+  Patient,
+  Prescription,
+  Visit,
+  DoctorDashboardResponse,
+  PatientPipelineResponse,
+  DoctorSettingsResponse,
+  DoctorProfilePreferences,
+  ApprovalResponse,
+} from "../types"
 
-const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? "/api").replace(
+const API_BASE = (import.meta.env?.VITE_API_BASE_URL ?? "/api").replace(
   /\/$/,
   "",
 )
@@ -143,8 +151,8 @@ export type ApiError = Error & {
 
 export function isBackendConfigured(): boolean {
   return (
-    import.meta.env.VITE_USE_BACKEND === "true" ||
-    Boolean(import.meta.env.VITE_API_BASE_URL)
+    import.meta.env?.VITE_USE_BACKEND === "true" ||
+    Boolean(import.meta.env?.VITE_API_BASE_URL)
   )
 }
 
@@ -167,7 +175,7 @@ export function clearSessionTokens(): void {
 }
 
 export function getDevelopmentUser(): ApiUser | null {
-  if (isBackendConfigured() || !import.meta.env.DEV) return null
+  if (isBackendConfigured() || !import.meta.env?.DEV) return null
 
   const value = localStorage.getItem(DEV_USER_KEY)
 
@@ -237,7 +245,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 export const api = {
   auth: {
     async login(email: string, password: string, portal: PortalRole) {
-      if (!isBackendConfigured() && import.meta.env.DEV) {
+      if (!isBackendConfigured() && import.meta.env?.DEV) {
         if (!email || !password)
           throw new Error("Please enter your email and password.")
 
@@ -446,11 +454,50 @@ export const api = {
   },
 
   prescriptions: {
-    approve: (id: string, changes?: Record<string, unknown>) =>
-      request<{ success: boolean; prescription: unknown }>(
-        `/prescriptions/${id}/approve`,
-        { method: "POST", body: JSON.stringify({ changes }) },
-      ),
+    approve: (
+      id: string,
+      payload?: {
+        idempotencyKey?: string
+        suggestion?: unknown
+        editedValues?: Record<string, unknown>
+        changes?: Record<string, unknown>
+        reason?: string
+        medication?: Record<string, unknown>
+      },
+    ) =>
+      isBackendConfigured()
+        ? request<ApprovalResponse>(`/prescriptions/${id}/approve`, {
+            method: "POST",
+            body: JSON.stringify(payload ?? {}),
+          })
+        : Promise.resolve<ApprovalResponse>({
+            success: true,
+            prescription: {
+              id,
+              status: "approved",
+              suggestedBy: "ai",
+              approvedBy: DEMO_DOCTOR.id,
+              approvedAt: new Date().toISOString(),
+              citations: [],
+              revisions: [],
+              medication: {
+                id: `med-ai-${id}`,
+                name: (payload?.suggestion as any)?.name ?? "Medication",
+                genericName: (payload?.suggestion as any)?.genericName ?? "generic",
+                strength: (payload?.suggestion as any)?.strength ?? "10mg",
+                unit: (payload?.suggestion as any)?.unit ?? "mg",
+                frequency: (payload?.suggestion as any)?.frequency ?? "daily",
+                quantity: (payload?.suggestion as any)?.quantity ?? 30,
+                duration: "30 days",
+                instructions: "Take with food",
+                startDate: new Date().toISOString().slice(0, 10),
+                endDate: new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10),
+                status: "active",
+                prescribedBy: DEMO_DOCTOR.name,
+              },
+            },
+            correlationId: `corr-demo-${Date.now()}`,
+          }),
 
     reject: (id: string) =>
       request<{ success: boolean; prescription: unknown }>(
@@ -559,5 +606,114 @@ export const api = {
 
       return request<{ events: unknown[] }>(`/audit?${query}`)
     },
+  },
+
+  doctor: {
+    getDashboard: () =>
+      isBackendConfigured()
+        ? request<DoctorDashboardResponse>("/doctor/dashboard")
+        : Promise.resolve<DoctorDashboardResponse>({
+            patientCount: {
+              value: DEMO_PATIENTS.length,
+              availability: "available",
+            },
+            averageAdherence: {
+              value:
+                Math.round(
+                  (DEMO_PATIENTS.reduce(
+                    (sum, p) => sum + p.adherenceScore,
+                    0,
+                  ) /
+                    DEMO_PATIENTS.length) *
+                    10,
+                ) / 10,
+              availability: "available",
+            },
+            openEscalations: {
+              value: DEMO_PATIENTS.filter((p) => p.hasEscalation).length,
+              availability: "available",
+            },
+            remindersDelivered: { value: 1284, availability: "available" },
+            recentActivity: [
+              {
+                id: "demo-act-1",
+                type: "escalation_opened",
+                description: "Missed dose pattern detected for Lisinopril",
+                patientId: "p-001",
+                patientName: "Marcus Rivera",
+                timestamp: new Date(Date.now() - 3600000).toISOString(),
+              },
+              {
+                id: "demo-act-2",
+                type: "prescription_approved",
+                description: "Prescription approved for Losartan 50mg",
+                patientId: "p-001",
+                patientName: "Marcus Rivera",
+                timestamp: new Date(Date.now() - 7200000).toISOString(),
+              },
+            ],
+            freshnessTimestamp: new Date().toISOString(),
+            correlationId: `corr-demo-${Date.now()}`,
+          }),
+
+    getPipeline: (patientId: string) =>
+      isBackendConfigured()
+        ? request<PatientPipelineResponse>(
+            `/doctor/patients/${patientId}/pipeline`,
+          )
+        : Promise.resolve<PatientPipelineResponse>({
+            run: null,
+            stages: [],
+            correlationId: `corr-demo-${Date.now()}`,
+          }),
+
+    getSettings: () =>
+      isBackendConfigured()
+        ? request<DoctorSettingsResponse>("/doctor/settings")
+        : Promise.resolve<DoctorSettingsResponse>({
+            profile: {
+              id: DEMO_DOCTOR.id,
+              fullName: DEMO_DOCTOR.name,
+              email: DEMO_DOCTOR.email,
+              role: "doctor",
+            },
+            preferences: {
+              displayName: DEMO_DOCTOR.name,
+              specialty: DEMO_DOCTOR.specialty,
+              phone: "+1 (555) 234-5678",
+              notification: {
+                channels: ["email", "push"],
+                quietHoursStart: "22:00",
+                quietHoursEnd: "07:00",
+              },
+            },
+            correlationId: `corr-demo-${Date.now()}`,
+          }),
+
+    updateSettings: (preferences: Partial<DoctorProfilePreferences>) =>
+      isBackendConfigured()
+        ? request<DoctorSettingsResponse>("/doctor/settings", {
+            method: "PUT",
+            body: JSON.stringify(preferences),
+          })
+        : Promise.resolve<DoctorSettingsResponse>({
+            profile: {
+              id: DEMO_DOCTOR.id,
+              fullName: preferences.displayName || DEMO_DOCTOR.name,
+              email: DEMO_DOCTOR.email,
+              role: "doctor",
+            },
+            preferences: {
+              displayName: preferences.displayName || DEMO_DOCTOR.name,
+              specialty: preferences.specialty || DEMO_DOCTOR.specialty,
+              phone: preferences.phone || "",
+              notification: preferences.notification || {
+                channels: ["email", "push"],
+                quietHoursStart: "22:00",
+                quietHoursEnd: "07:00",
+              },
+            },
+            correlationId: `corr-demo-${Date.now()}`,
+          }),
   },
 }

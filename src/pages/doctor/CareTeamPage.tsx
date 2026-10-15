@@ -8,6 +8,7 @@ import {
   DEMO_PIPELINE_STAGES,
   DEMO_CARE_TEAM,
   DEMO_SPARKLINE,
+  getMockPipelineForPatient,
 } from "../../lib/mockData"
 
 import type { PipelineStage } from "../../lib/types"
@@ -48,36 +49,54 @@ export default function CareTeamPage() {
     isBackendConfigured() ? [] as typeof DEMO_CARE_TEAM : DEMO_CARE_TEAM,
   )
 
-  useEffect(() => {
-    if (!isBackendConfigured() || !patientId) return
-
-    Promise.all([
-      api.patients.get(patientId),
-
-      api.escalations.list(patientId),
-
-      api.careTeam.list(),
-    ])
-
-      .then(([patientResult, escalationsResult, careTeamResult]) => {
-        setPatient(patientResult.patient)
-
-        setEscalations(escalationsResult.escalations as typeof DEMO_ESCALATIONS)
-
-        setCareTeam(careTeamResult.members)
-      })
-
-      .catch(() => setError("Patient care-team data could not be loaded."))
-
-      .finally(() => setLoading(false))
-  }, [patientId])
-
   const [acknowledged, setAcknowledged] = useState<Set<string>>(new Set())
 
   const [expandedLog, setExpandedLog] = useState<string | null>(null)
 
-  const [pipelineStages, setPipelineStages] =
-    useState<PipelineStage[]>(DEMO_PIPELINE_STAGES)
+  const [pipelineStages, setPipelineStages] = useState<PipelineStage[]>(() =>
+    getMockPipelineForPatient(patientId || "p-001"),
+  )
+
+  useEffect(() => {
+    if (!isBackendConfigured()) {
+      setPipelineStages(getMockPipelineForPatient(patientId || "p-001"))
+      return
+    }
+    if (!patientId) return
+
+    Promise.all([
+      api.patients.get(patientId),
+      api.escalations.list(patientId),
+      api.careTeam.list(),
+      api.doctor.getPipeline(patientId),
+    ])
+      .then(([patientResult, escalationsResult, careTeamResult, pipelineResult]) => {
+        setPatient(patientResult.patient)
+        setEscalations(escalationsResult.escalations as typeof DEMO_ESCALATIONS)
+        setCareTeam(careTeamResult.members)
+
+        if (pipelineResult && pipelineResult.stages.length > 0) {
+          const mappedStages: PipelineStage[] = pipelineResult.stages.map((stage) => ({
+            id: stage.id,
+            name: stage.agentName || stage.stageKey,
+            agentName: stage.stageKey,
+            description: stage.agentName,
+            status: stage.status === "retrying" ? "running" : stage.status,
+            lastRun: stage.updatedAt,
+            logs: (stage.logs || []).map((l) => ({
+              id: l.id,
+              timestamp: l.createdAt || new Date().toISOString(),
+              level: l.level,
+              message: l.message,
+              metadata: l.metadata as Record<string, string | number | boolean> | undefined,
+            })),
+          }))
+          setPipelineStages(mappedStages)
+        }
+      })
+      .catch(() => setError("Patient care-team data could not be loaded."))
+      .finally(() => setLoading(false))
+  }, [patientId])
 
   useEffect(() => {
     if (isBackendConfigured()) return

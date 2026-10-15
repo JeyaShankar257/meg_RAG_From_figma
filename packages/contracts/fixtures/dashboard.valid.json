@@ -1,0 +1,41 @@
+{
+  "description": "Contract fixture: valid populated doctor dashboard response",
+  "patientCount": {
+    "value": 142,
+    "availability": "available"
+  },
+  "averageAdherence": {
+    "value": 91.4,
+    "availability": "available"
+  },
+  "openEscalations": {
+    "value": 3,
+    "availability": "available"
+  },
+  "remindersDelivered": {
+    "value": 1284,
+    "availability": "available"
+  },
+  "recentActivity": [
+    {
+      "id": "act-001",
+      "type": "escalation_opened",
+      "description": "Missed dose pattern detected for Lisinopril",
+      "patientId": "p-001",
+      "patientName": "Marcus Rivera",
+      "timestamp": "2026-10-13T18:30:00.000Z",
+      "correlationId": "corr-dashboard-001"
+    },
+    {
+      "id": "act-002",
+      "type": "prescription_approved",
+      "description": "Prescription approved for Losartan 50mg",
+      "patientId": "p-001",
+      "patientName": "Marcus Rivera",
+      "timestamp": "2026-10-13T17:15:00.000Z",
+      "correlationId": "corr-dashboard-002"
+    }
+  ],
+  "freshnessTimestamp": "2026-10-13T19:00:00.000Z",
+  "correlationId": "corr-dashboard-read-001"
+}

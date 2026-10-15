@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, isBackendConfigured } from "../../lib/api/apiClient";
 import { DEMO_PATIENTS } from "../../lib/mockData";
+import type { DoctorDashboardResponse } from "../../lib/types";
 import Card from "../../components/ui/Card";
 import Badge from "../../components/ui/Badge";
 import Button from "../../components/ui/Button";
@@ -9,12 +10,12 @@ import StatusPill from "../../components/ui/StatusPill";
 import TrustBadge from "../../components/ui/TrustBadge";
 import TrendSparkline from "../../components/charts/TrendSparkline";
 
-const recentActivity = [
-  { time: "09:32", text: "Marcus Rivera logged morning Metformin dose — on time", type: "success" },
-  { time: "08:14", text: "Pattern detection run completed for all active patients", type: "info" },
-  { time: "07:00", text: "Morning reminders sent to 3 patients (2 delivered, 1 retry)", type: "info" },
-  { time: "Yesterday", text: "David Kowalski escalation created — urgent, 18 missed doses", type: "error" },
-  { time: "Yesterday", text: "Sofia Patel invitation email sent — awaiting activation", type: "info" },
+const DEMO_RECENT_ACTIVITY = [
+  { id: "demo-1", time: "09:32", text: "Marcus Rivera logged morning Metformin dose — on time", type: "success" },
+  { id: "demo-2", time: "08:14", text: "Pattern detection run completed for all active patients", type: "info" },
+  { id: "demo-3", time: "07:00", text: "Morning reminders sent to 3 patients (2 delivered, 1 retry)", type: "info" },
+  { id: "demo-4", time: "Yesterday", text: "David Kowalski escalation created — urgent, 18 missed doses", type: "error" },
+  { id: "demo-5", time: "Yesterday", text: "Sofia Patel invitation email sent — awaiting activation", type: "info" },
 ];
 
 const sparkData = [
@@ -29,15 +30,33 @@ export default function DoctorDashboard() {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchId, setSearchId] = useState("");
   const [patients, setPatients] = useState<typeof DEMO_PATIENTS>(isBackendConfigured() ? [] : DEMO_PATIENTS);
+  const [dashboardData, setDashboardData] = useState<DoctorDashboardResponse | null>(null);
   const [loading, setLoading] = useState(isBackendConfigured());
   const [error, setError] = useState("");
-  useEffect(() => {
+
+  const loadData = useCallback(() => {
     if (!isBackendConfigured()) return;
-    api.patients.list()
-      .then(({ patients: result }) => setPatients(result))
-      .catch(() => setError("Patients could not be loaded. Retry to refresh."))
+    setLoading(true);
+    setError("");
+
+    Promise.all([
+      api.patients.list(),
+      api.doctor.getDashboard(),
+    ])
+      .then(([patientsRes, dashboardRes]) => {
+        setPatients(patientsRes.patients);
+        setDashboardData(dashboardRes);
+      })
+      .catch((err) => {
+        setDashboardData(null);
+        setError(err?.message || "Dashboard and patient data could not be loaded. Please retry.");
+      })
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
   const filtered = patients.filter(
     (p) =>
@@ -47,20 +66,85 @@ export default function DoctorDashboard() {
 
   const openEscalations = patients.filter((patient) => patient.hasEscalation);
 
+  // Derive metric values safely based on backend data or demo fallback
+  const isBackend = isBackendConfigured();
+
+  const patientCountDisplay = isBackend
+    ? dashboardData?.patientCount.availability === "available"
+      ? String(dashboardData.patientCount.value)
+      : "—"
+    : String(patients.length);
+
+  const adherenceDisplay = isBackend
+    ? dashboardData?.averageAdherence.availability === "available"
+      ? `${dashboardData.averageAdherence.value}%`
+      : "—"
+    : "72%";
+
+  const escalationsDisplay = isBackend
+    ? dashboardData?.openEscalations.availability === "available"
+      ? String(dashboardData.openEscalations.value)
+      : "—"
+    : String(openEscalations.length);
+
+  const remindersDisplay = isBackend
+    ? dashboardData?.remindersDelivered.availability === "available"
+      ? String(dashboardData.remindersDelivered.value)
+      : "—"
+    : "12";
+
+  // Recent activity items
+  const activityList = isBackend
+    ? (dashboardData?.recentActivity || []).map((act) => ({
+        id: act.id,
+        text: act.description,
+        time: act.timestamp ? new Date(act.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "Recent",
+        type: act.type.includes("escalation") ? "error" : act.type.includes("approved") ? "success" : "info",
+      }))
+    : DEMO_RECENT_ACTIVITY;
+
   return (
     <div className="p-6 max-w-7xl space-y-6 animate-fade-in">
-    {loading && <p className="text-sm text-slate-500">Loading patient data…</p>}
-    {error && <p className="text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded-lg p-3">{error}</p>}
       {/* Page header */}
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Dashboard</h1>
-          <p className="text-slate-500 text-sm mt-0.5">Saturday, September 12, 2026</p>
+          <p className="text-slate-500 text-sm mt-0.5">
+            {dashboardData?.freshnessTimestamp
+              ? `Updated ${new Date(dashboardData.freshnessTimestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
+              : "Saturday, September 12, 2026"}
+          </p>
         </div>
-        <Button onClick={() => navigate("/doctor/patients/new")} icon={<PlusIcon />}>
-          Add New Patient
-        </Button>
+        <div className="flex items-center gap-3">
+          {error && (
+            <Button size="sm" variant="outline" onClick={loadData}>
+              Retry Loading
+            </Button>
+          )}
+          <Button onClick={() => navigate("/doctor/patients/new")} icon={<PlusIcon />}>
+            Add New Patient
+          </Button>
+        </div>
       </div>
+
+      {loading && (
+        <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-500 flex items-center gap-2">
+          <span className="w-4 h-4 border-2 border-teal-600 border-t-transparent rounded-full animate-spin" />
+          Loading clinical dashboard and patient data…
+        </div>
+      )}
+
+      {error && (
+        <div className="p-4 bg-rose-50 border border-rose-200 rounded-xl flex items-center justify-between text-sm text-rose-700">
+          <div>
+            <p className="font-semibold text-rose-800">Dashboard Unavailable</p>
+            <p className="text-xs text-rose-600 mt-0.5">{error}</p>
+          </div>
+          <Button size="sm" variant="danger" onClick={loadData}>
+            Retry
+          </Button>
+        </div>
+      )}
 
       {/* Escalation banner */}
       {openEscalations.length > 0 && (
@@ -100,17 +184,66 @@ export default function DoctorDashboard() {
       {/* Stats row */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[
-          { label: "Active Patients", value: "4", sub: "3 active, 1 invited", color: "teal" },
-          { label: "Avg Adherence", value: "72%", sub: "3 monitored patients", color: "teal" },
-          { label: "Open Escalations", value: String(openEscalations.length), sub: "Requires review", color: "rose" },
-          { label: "Reminders Sent", value: "12", sub: "Today, 2 retried", color: "slate" },
+          {
+            label: "Active Patients",
+            value: patientCountDisplay,
+            sub: isBackend
+              ? dashboardData?.patientCount.availability !== "available"
+                ? dashboardData?.patientCount.errorMessage || "Temporarily unavailable"
+                : "Assignment scoped"
+              : "3 active, 1 invited",
+            color: "teal",
+            availability: dashboardData?.patientCount.availability,
+          },
+          {
+            label: "Avg Adherence",
+            value: adherenceDisplay,
+            sub: isBackend
+              ? dashboardData?.averageAdherence.availability !== "available"
+                ? dashboardData?.averageAdherence.errorMessage || "Computation unavailable"
+                : "Monitored patients"
+              : "3 monitored patients",
+            color: "teal",
+            availability: dashboardData?.averageAdherence.availability,
+          },
+          {
+            label: "Open Escalations",
+            value: escalationsDisplay,
+            sub: isBackend
+              ? dashboardData?.openEscalations.availability !== "available"
+                ? dashboardData?.openEscalations.errorMessage || "Query error"
+                : "Requires review"
+              : "Requires review",
+            color: "rose",
+            availability: dashboardData?.openEscalations.availability,
+          },
+          {
+            label: "Reminders Delivered",
+            value: remindersDisplay,
+            sub: isBackend
+              ? dashboardData?.remindersDelivered.availability !== "available"
+                ? dashboardData?.remindersDelivered.errorMessage || "Metric unavailable"
+                : "Verified delivered"
+              : "Today, 2 retried",
+            color: "slate",
+            availability: dashboardData?.remindersDelivered.availability,
+          },
         ].map((stat) => (
           <Card key={stat.label} padding="md">
-            <div className={`text-2xl font-bold mb-0.5 ${stat.color === "rose" ? "text-rose-600" : "text-slate-900"}`}>
-              {stat.value}
+            <div className="flex items-center justify-between mb-0.5">
+              <div className={`text-2xl font-bold ${stat.color === "rose" ? "text-rose-600" : "text-slate-900"}`}>
+                {stat.value}
+              </div>
+              {stat.availability && stat.availability !== "available" && (
+                <span className={`text-[10px] uppercase font-bold px-1.5 py-0.5 rounded ${
+                  stat.availability === "error" ? "bg-rose-100 text-rose-700" : "bg-amber-100 text-amber-700"
+                }`}>
+                  {stat.availability}
+                </span>
+              )}
             </div>
             <div className="text-sm font-medium text-slate-700">{stat.label}</div>
-            <div className="text-xs text-slate-400 mt-0.5">{stat.sub}</div>
+            <div className="text-xs text-slate-400 mt-0.5 truncate">{stat.sub}</div>
           </Card>
         ))}
       </div>
@@ -129,6 +262,12 @@ export default function DoctorDashboard() {
               />
             </div>
           </div>
+
+          {filtered.length === 0 && !loading && (
+            <Card padding="md" className="text-center py-8 text-slate-500 text-sm">
+              {searchQuery ? "No patients matching your search." : "No assigned patients found."}
+            </Card>
+          )}
 
           <div className="space-y-3">
             {filtered.map((patient, i) => (
@@ -153,7 +292,7 @@ export default function DoctorDashboard() {
                       )}
                     </div>
                     <div className="text-xs text-slate-500 mt-0.5">
-                      {patient.conditions.join(" · ")} · Last visit {patient.lastVisit}
+                      {patient.conditions.join(" · ")} · Last visit {patient.lastVisit || "N/A"}
                     </div>
                   </div>
                   <div className="flex items-center gap-3 flex-shrink-0">
@@ -186,7 +325,11 @@ export default function DoctorDashboard() {
                 placeholder="Look up by Patient ID (PT-XXXXX)…"
                 className="flex-1 text-sm bg-transparent border-0 outline-none text-slate-700 placeholder-slate-400 font-mono"
               />
-              <Button size="sm" variant="outline">Look Up</Button>
+              <Button size="sm" variant="outline" onClick={() => {
+                if (!searchId.trim()) return;
+                const found = patients.find((p) => p.patientId.toLowerCase() === searchId.trim().toLowerCase());
+                if (found) navigate(`/doctor/patients/${found.id}`);
+              }}>Look Up</Button>
             </div>
           </Card>
         </div>
@@ -195,20 +338,24 @@ export default function DoctorDashboard() {
         <div className="space-y-4">
           <h2 className="text-base font-semibold text-slate-900">Recent Activity</h2>
           <Card padding="none">
-            <div className="divide-y divide-slate-100">
-              {recentActivity.map((item, i) => (
-                <div key={i} className="flex gap-3 p-4">
-                  <div className={`w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0 ${
-                    item.type === "error" ? "bg-rose-500" :
-                    item.type === "success" ? "bg-emerald-500" : "bg-slate-300"
-                  }`} />
-                  <div className="min-w-0">
-                    <p className="text-xs text-slate-700 leading-relaxed">{item.text}</p>
-                    <span className="text-[10px] text-slate-400 font-medium mt-0.5 block">{item.time}</span>
+            {activityList.length === 0 ? (
+              <p className="p-4 text-xs text-slate-400 text-center">No recent clinical activity recorded.</p>
+            ) : (
+              <div className="divide-y divide-slate-100">
+                {activityList.map((item) => (
+                  <div key={item.id} className="flex gap-3 p-4">
+                    <div className={`w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0 ${
+                      item.type === "error" ? "bg-rose-500" :
+                      item.type === "success" ? "bg-emerald-500" : "bg-slate-300"
+                    }`} />
+                    <div className="min-w-0">
+                      <p className="text-xs text-slate-700 leading-relaxed">{item.text}</p>
+                      <span className="text-[10px] text-slate-400 font-medium mt-0.5 block">{item.time}</span>
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </Card>
 
           {/* Quick add card */}

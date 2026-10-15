@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { updatePipelineStageProjection } from "../jobs/pipelineStageUpdater.js";
 
 export interface DurableJob {
     id: string;
@@ -13,6 +14,8 @@ export interface DurableJob {
     claimed_at?: string | null;
     completed_at?: string | null;
     last_error?: string | null;
+    pipeline_run_id?: string | null;
+    pipeline_stage_id?: string | null;
 }
 
 export class DurableQueue {
@@ -63,7 +66,9 @@ export class DurableQueue {
     /**
      * Marks a claimed job as successfully completed
      */
-    async completeJob(jobId: string): Promise<void> {
+    async completeJob(jobOrId: DurableJob | string): Promise<void> {
+        const jobId = typeof jobOrId === "string" ? jobOrId : jobOrId.id;
+        const job = typeof jobOrId === "string" ? undefined : jobOrId;
         const now = new Date().toISOString();
         await this.supabase
             .from("jobs")
@@ -72,6 +77,19 @@ export class DurableQueue {
                 completed_at: now,
             })
             .eq("id", jobId);
+
+        if (job && (job.pipeline_stage_id || job.pipeline_run_id)) {
+            await updatePipelineStageProjection({
+                supabase: this.supabase,
+                jobId: job.id,
+                jobType: job.type,
+                pipelineRunId: job.pipeline_run_id,
+                pipelineStageId: job.pipeline_stage_id,
+                event: "completed",
+                attempt: job.attempts,
+                correlationId: job.correlation_id,
+            });
+        }
     }
 
     /**
@@ -96,6 +114,20 @@ export class DurableQueue {
                 })
                 .eq("id", job.id);
 
+            if (job.pipeline_stage_id || job.pipeline_run_id) {
+                await updatePipelineStageProjection({
+                    supabase: this.supabase,
+                    jobId: job.id,
+                    jobType: job.type,
+                    pipelineRunId: job.pipeline_run_id,
+                    pipelineStageId: job.pipeline_stage_id,
+                    event: "dead_letter",
+                    attempt: nextAttempts,
+                    errorMessage,
+                    correlationId: job.correlation_id,
+                });
+            }
+
             return { terminal: true };
         }
 
@@ -113,6 +145,20 @@ export class DurableQueue {
                 claimed_at: null,
             })
             .eq("id", job.id);
+
+        if (job.pipeline_stage_id || job.pipeline_run_id) {
+            await updatePipelineStageProjection({
+                supabase: this.supabase,
+                jobId: job.id,
+                jobType: job.type,
+                pipelineRunId: job.pipeline_run_id,
+                pipelineStageId: job.pipeline_stage_id,
+                event: "retry",
+                attempt: nextAttempts,
+                errorMessage,
+                correlationId: job.correlation_id,
+            });
+        }
 
         return { terminal: false, nextRunAt: nextRun };
     }

@@ -1,0 +1,66 @@
+{
+  "description": "Contract fixture: partial pipeline run with in-flight stages and partial log stream",
+  "run": {
+    "id": "run-fixture-003",
+    "patientId": "p-001",
+    "workspaceId": "a0000000-0000-0000-0000-000000000001",
+    "triggerType": "dose_logged",
+    "triggerId": "dose-fixture-001",
+    "status": "running",
+    "correlationId": "corr-fixture-003",
+    "createdAt": "2026-10-13T18:00:00.000Z",
+    "startedAt": "2026-10-13T18:00:02.000Z"
+  },
+  "stages": [
+    {
+      "stageKey": "reminder_agent",
+      "status": "idle",
+      "agentName": "Reminder Agent",
+      "attempt": 0,
+      "logs": []
+    },
+    {
+      "stageKey": "dose_logging_agent",
+      "status": "complete",
+      "agentName": "Dose Logging Agent",
+      "attempt": 1,
+      "startedAt": "2026-10-13T18:00:02.000Z",
+      "completedAt": "2026-10-13T18:00:05.000Z",
+      "logs": [
+        {
+          "level": "info",
+          "message": "Validated incoming dose entry",
+          "correlationId": "corr-fixture-003"
+        }
+      ]
+    },
+    {
+      "stageKey": "pattern_detection_agent",
+      "status": "running",
+      "agentName": "Pattern Detection Agent",
+      "attempt": 1,
+      "startedAt": "2026-10-13T18:00:06.000Z",
+      "logs": [
+        {
+          "level": "info",
+          "message": "Analyzing 30-day adherence trend",
+          "correlationId": "corr-fixture-003"
+        }
+      ]
+    },
+    {
+      "stageKey": "escalation_agent",
+      "status": "idle",
+      "agentName": "Escalation Agent",
+      "attempt": 0,
+      "logs": []
+    },
+    {
+      "stageKey": "care_team_interaction_agent",
+      "status": "idle",
+      "agentName": "Care Team Interaction Agent",
+      "attempt": 0,
+      "logs": []
+    }
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "description": "Contract fixture: partial doctor dashboard response with unavailable and error metrics",
+  "patientCount": {
+    "value": 142,
+    "availability": "available"
+  },
+  "averageAdherence": {
+    "value": 0,
+    "availability": "unavailable",
+    "errorMessage": "Adherence computation temporarily unavailable"
+  },
+  "openEscalations": {
+    "value": 0,
+    "availability": "error",
+    "errorMessage": "Escalation query service timed out"
+  },
+  "remindersDelivered": {
+    "value": 0,
+    "availability": "unavailable"
+  },
+  "recentActivity": [],
+  "freshnessTimestamp": "2026-10-13T19:00:00.000Z",
+  "correlationId": "corr-dashboard-partial-001"
+}

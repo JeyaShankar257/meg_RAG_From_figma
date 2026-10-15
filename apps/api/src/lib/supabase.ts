@@ -18,6 +18,13 @@ export function getAdminClient(): SupabaseClient {
 }
 
 /**
+ * Sets or overrides the admin client (primarily for testing and mock execution).
+ */
+export function setAdminClient(client: SupabaseClient | null): void {
+    _adminClient = client;
+}
+
+/**
  * Returns a user-scoped Supabase client that respects Postgres Row-Level Security.
  */
 export function getUserClient(accessToken: string): SupabaseClient {

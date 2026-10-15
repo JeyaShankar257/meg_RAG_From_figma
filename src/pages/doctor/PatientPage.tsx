@@ -109,9 +109,58 @@ export default function PatientPage() {
     setEditedMeds((prev) => prev.map((m, i) => i === idx ? { ...m, [field]: value } : m));
   };
 
-  const handleConfirmApprove = () => {
+  const [approving, setApproving] = useState(false);
+  const [approveError, setApproveError] = useState("");
+
+  const handleConfirmApprove = async () => {
     setShowApprovePreview(false);
+    setApproving(true);
+    setApproveError("");
     const approvedAt = new Date();
+
+    if (isBackendConfigured()) {
+      try {
+        const approvedList: Prescription[] = [];
+        for (let index = 0; index < editedMeds.length; index++) {
+          const medication = editedMeds[index];
+          const idempotencyKey = `idem-${patient.id}-${Date.now()}-${index}`;
+          const res = await api.prescriptions.approve(
+            (medication as any).prescriptionId || `rx-ai-${patient.id}-${index}`,
+            {
+              idempotencyKey,
+              suggestion: medication,
+              editedValues: {
+                name: medication.name,
+                dosage: medication.strength,
+                frequency: medication.frequency,
+                quantity: medication.quantity,
+                days: medication.days,
+                instructions: medication.instructions,
+              },
+              reason: "Doctor approved AI suggestion",
+            }
+          );
+          if (res.prescription) {
+            approvedList.push(res.prescription);
+          }
+        }
+        setPrescriptions((previous) => [...approvedList, ...previous]);
+        const newIds = new Set(editedMeds.map((m) => m.name));
+        setJustApprovedIds(newIds);
+        setApproveToast(true);
+        setTimeout(() => setApproveToast(false), 4000);
+        setTimeout(() => setJustApprovedIds(new Set()), 3500);
+        setActiveTab("Prescription");
+      } catch (err: any) {
+        // Clinical safety: failed approval leaves local prescriptions unchanged!
+        setApproveError(err?.message || "Failed to approve prescription on server. Please try again.");
+      } finally {
+        setApproving(false);
+      }
+      return;
+    }
+
+    // Development demo mode simulation
     const newPrescriptions: Prescription[] = editedMeds.map((medication, index) => {
       const endDate = new Date(approvedAt);
       endDate.setDate(endDate.getDate() + medication.days);
@@ -148,6 +197,7 @@ export default function PatientPage() {
     setTimeout(() => setApproveToast(false), 4000);
     setTimeout(() => setJustApprovedIds(new Set()), 3500);
     setActiveTab("Prescription");
+    setApproving(false);
   };
 
   const handleStartPrescriptionEdit = (prescription: Prescription) => {
@@ -232,7 +282,7 @@ export default function PatientPage() {
     if (isBackendConfigured()) {
       try {
         const result = await api.prescriptions.approve(editingPrescriptionId, {
-          medication: prescriptionDraft,
+          medication: prescriptionDraft as unknown as Record<string, unknown>,
           reason: prescriptionReason.trim(),
         });
         setPrescriptions((previous) => previous.map((prescription) =>
@@ -944,6 +994,19 @@ export default function PatientPage() {
             <path d="M9 11l3 3L22 4" strokeLinecap="round" strokeLinejoin="round"/>
           </svg>
           Prescription approved. Dose schedule generation triggered.
+        </div>
+      )}
+
+      {/* Error toast */}
+      {approveError && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-rose-700 text-white text-sm font-medium px-5 py-3 rounded-xl shadow-lg flex items-center gap-3 z-50 animate-slide-in-up">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width={16} height={16}>
+            <circle cx="12" cy="12" r="10" />
+            <line x1="12" y1="8" x2="12" y2="12" />
+            <line x1="12" y1="16" x2="12.01" y2="16" />
+          </svg>
+          <span>{approveError}</span>
+          <button onClick={() => setApproveError("")} className="text-rose-200 hover:text-white font-bold ml-2">✕</button>
         </div>
       )}
     </div>

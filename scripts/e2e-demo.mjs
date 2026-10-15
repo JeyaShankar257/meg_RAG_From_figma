@@ -112,8 +112,38 @@ if (demoMode) {
   if (correctionResponse.status === 401 || correctionResponse.status === 403)
     throw new Error("Correction workflow is not authorized")
 
+  const dashboardResponse = await fetch(`${apiUrl}/doctor/dashboard`, {
+    headers: { Authorization: `Bearer ${doctorToken}` },
+  })
+  if (dashboardResponse.status === 401 || dashboardResponse.status === 403)
+    throw new Error("Doctor cannot access dashboard")
+
+  const settingsResponse = await fetch(`${apiUrl}/doctor/settings`, {
+    headers: { Authorization: `Bearer ${doctorToken}` },
+  })
+  if (settingsResponse.status === 401 || settingsResponse.status === 403)
+    throw new Error("Doctor cannot access settings")
+
+  const pipelineResponse = await fetch(
+    `${apiUrl}/doctor/patients/${patientId}/pipeline`,
+    {
+      headers: { Authorization: `Bearer ${doctorToken}` },
+    },
+  )
+  if (pipelineResponse.status === 401 || pipelineResponse.status === 403)
+    throw new Error("Doctor cannot access patient pipeline")
+
+  const unassignedResponse = await fetch(
+    `${apiUrl}/doctor/patients/p-unassigned-nonexistent/pipeline`,
+    {
+      headers: { Authorization: `Bearer ${doctorToken}` },
+    },
+  )
+  if (unassignedResponse.status !== 404)
+    throw new Error("Unassigned patient pipeline did not return 404")
+
   console.log(
-    "Verified doctor login, patient activation/session, protected patient reads, consent, and correction workflow boundaries.",
+    "Verified doctor login, dashboard, settings, durable pipeline, patient activation/session, protected patient reads, consent, and correction workflow boundaries.",
   )
 }
 

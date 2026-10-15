@@ -10,13 +10,25 @@ import {
     generateGeminiCompatibleEmbedding,
     type VectorSearchCandidate,
 } from "../../services/ragRetrieval.js";
-import type {
-    RagAnalysisResponse,
-    AIAnalysis,
-    RetrievedEvidence,
-    RagEvidenceStatus,
-    AIPrescriptionSuggestion,
-    Citation,
+import {
+    type RagAnalysisResponse,
+    type AIAnalysis,
+    type RetrievedEvidence,
+    type RagEvidenceStatus,
+    type AIPrescriptionSuggestion,
+    type Citation,
+    type DoctorDashboardResponse,
+    type DashboardMetric,
+    type DashboardActivity,
+    type PatientPipelineResponse,
+    type PipelineStageWithLogs,
+    type PipelineStageKey,
+    type PipelineStageStatus,
+    type PipelineLogLevel,
+    type PipelineRunStatus,
+    PIPELINE_STAGE_DISPLAY,
+    type DoctorSettingsResponse,
+    type DoctorProfilePreferences,
 } from "@mednova/types";
 
 export const doctorRouter = new Hono();
@@ -538,3 +550,511 @@ doctorRouter.get(
         });
     },
 );
+
+// ─── Doctor Settings Validation Schema ─────────────────────────────────────────
+const doctorSettingsUpdateSchema = z.object({
+    displayName: z.string().min(1, "Display name cannot be empty").optional(),
+    specialty: z.string().optional(),
+    phone: z.string().optional(),
+    notification: z.object({
+        channels: z
+            .array(z.enum(["email", "sms", "push"]))
+            .min(1, "At least one notification channel is required"),
+        quietHoursStart: z
+            .string()
+            .regex(/^([01]\d|2[0-3]):([0-5]\d)$/, "Invalid quiet hours start format (HH:MM)")
+            .optional()
+            .or(z.literal("")),
+        quietHoursEnd: z
+            .string()
+            .regex(/^([01]\d|2[0-3]):([0-5]\d)$/, "Invalid quiet hours end format (HH:MM)")
+            .optional()
+            .or(z.literal("")),
+    }),
+});
+
+/**
+ * GET /doctor/dashboard (Task 2.1)
+ * Returns assignment-scoped metrics: patientCount, averageAdherence, openEscalations, remindersDelivered,
+ * recentActivity, freshnessTimestamp, correlationId.
+ */
+doctorRouter.get("/dashboard", requireRole("doctor", "admin"), async (c) => {
+    const user = c.get("user");
+    const correlationId = (c.get("correlationId") as string) || "corr-" + Date.now();
+    const admin = getAdminClient();
+    const freshnessTimestamp = new Date().toISOString();
+
+    let assignedPatientIds: string[] = [];
+    const patientMap = new Map<string, string>();
+
+    try {
+        if (user.role === "doctor") {
+            const { data: assignments, error: aErr } = await admin
+                .from("care_team_assignments")
+                .select("patient_id")
+                .eq("doctor_profile_id", user.profileId)
+                .is("revoked_at", null);
+
+            if (aErr) throw aErr;
+            const pIds = (assignments || []).map((a) => a.patient_id);
+            if (pIds.length > 0) {
+                const { data: pts, error: pErr } = await admin
+                    .from("patients")
+                    .select("id, full_name")
+                    .in("id", pIds)
+                    .eq("workspace_id", user.workspaceId)
+                    .eq("is_deleted", false);
+
+                if (pErr) throw pErr;
+                for (const p of pts || []) {
+                    assignedPatientIds.push(p.id);
+                    patientMap.set(p.id, p.full_name);
+                }
+            }
+        } else {
+            // Admin role has workspace-wide scope
+            const { data: pts, error: pErr } = await admin
+                .from("patients")
+                .select("id, full_name")
+                .eq("workspace_id", user.workspaceId)
+                .eq("is_deleted", false);
+
+            if (pErr) throw pErr;
+            for (const p of pts || []) {
+                assignedPatientIds.push(p.id);
+                patientMap.set(p.id, p.full_name);
+            }
+        }
+    } catch (err: any) {
+        return c.json<DoctorDashboardResponse>({
+            patientCount: { value: 0, availability: "error", errorMessage: err?.message || "Patient query error" },
+            averageAdherence: { value: 0, availability: "unavailable" },
+            openEscalations: { value: 0, availability: "unavailable" },
+            remindersDelivered: { value: 0, availability: "unavailable" },
+            recentActivity: [],
+            freshnessTimestamp,
+            correlationId,
+        });
+    }
+
+    const patientCount: DashboardMetric<number> = {
+        value: assignedPatientIds.length,
+        availability: "available",
+    };
+
+    if (assignedPatientIds.length === 0) {
+        return c.json<DoctorDashboardResponse>({
+            patientCount,
+            averageAdherence: { value: 0, availability: "available" },
+            openEscalations: { value: 0, availability: "available" },
+            remindersDelivered: { value: 0, availability: "available" },
+            recentActivity: [],
+            freshnessTimestamp,
+            correlationId,
+        });
+    }
+
+    let averageAdherence: DashboardMetric<number>;
+    let openEscalations: DashboardMetric<number>;
+    let remindersDelivered: DashboardMetric<number>;
+    let recentActivity: DashboardActivity[] = [];
+
+    // Adherence query
+    try {
+        const { data: adhRecords, error: adhErr } = await admin
+            .from("adherence_records")
+            .select("adherence_rate")
+            .in("patient_id", assignedPatientIds);
+
+        if (adhErr) throw adhErr;
+        if (adhRecords && adhRecords.length > 0) {
+            const total = adhRecords.reduce((acc, r) => acc + (Number(r.adherence_rate) || 0), 0);
+            const avgRaw = total / adhRecords.length;
+            const avgPct = avgRaw <= 1 ? avgRaw * 100 : avgRaw;
+            averageAdherence = {
+                value: Math.round(avgPct * 10) / 10,
+                availability: "available",
+            };
+        } else {
+            averageAdherence = { value: 0, availability: "available" };
+        }
+    } catch (err: any) {
+        averageAdherence = {
+            value: 0,
+            availability: "unavailable",
+            errorMessage: err?.message || "Adherence computation temporarily unavailable",
+        };
+    }
+
+    // Open escalations query
+    try {
+        const { data: escRecords, error: escErr } = await admin
+            .from("escalations")
+            .select("id, patient_id, severity, reasoning, created_at, correlation_id")
+            .in("patient_id", assignedPatientIds)
+            .eq("status", "open");
+
+        if (escErr) throw escErr;
+        openEscalations = {
+            value: escRecords?.length ?? 0,
+            availability: "available",
+        };
+
+        for (const esc of escRecords || []) {
+            recentActivity.push({
+                id: esc.id,
+                type: "escalation_opened",
+                description: esc.reasoning || `Escalation opened (${esc.severity})`,
+                patientId: esc.patient_id,
+                patientName: patientMap.get(esc.patient_id) || "Assigned Patient",
+                timestamp: esc.created_at,
+                correlationId: esc.correlation_id || correlationId,
+            });
+        }
+    } catch (err: any) {
+        openEscalations = {
+            value: 0,
+            availability: "error",
+            errorMessage: err?.message || "Escalation query service timed out",
+        };
+    }
+
+    // Reminders delivered query
+    try {
+        const { data: notifRecords, error: notifErr } = await admin
+            .from("notifications")
+            .select("id")
+            .in("patient_id", assignedPatientIds)
+            .eq("status", "delivered");
+
+        if (notifErr) throw notifErr;
+        remindersDelivered = {
+            value: notifRecords?.length ?? 0,
+            availability: "available",
+        };
+    } catch (err: any) {
+        remindersDelivered = {
+            value: 0,
+            availability: "unavailable",
+            errorMessage: err?.message || "Reminder delivery metric unavailable",
+        };
+    }
+
+    // Prescriptions approved query for recent activity
+    try {
+        const { data: rxRecords } = await admin
+            .from("prescriptions")
+            .select("id, patient_id, name, dosage, approved_at")
+            .in("patient_id", assignedPatientIds)
+            .eq("status", "approved")
+            .order("approved_at", { ascending: false })
+            .limit(5);
+
+        for (const rx of rxRecords || []) {
+            recentActivity.push({
+                id: rx.id,
+                type: "prescription_approved",
+                description: `Prescription approved for ${rx.name} ${rx.dosage || ""}`.trim(),
+                patientId: rx.patient_id,
+                patientName: patientMap.get(rx.patient_id) || "Assigned Patient",
+                timestamp: rx.approved_at || freshnessTimestamp,
+                correlationId,
+            });
+        }
+    } catch {
+        // Non-fatal for activity aggregation
+    }
+
+    recentActivity.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    recentActivity = recentActivity.slice(0, 10);
+
+    return c.json<DoctorDashboardResponse>({
+        patientCount,
+        averageAdherence,
+        openEscalations,
+        remindersDelivered,
+        recentActivity,
+        freshnessTimestamp,
+        correlationId,
+    });
+});
+
+/**
+ * GET /doctor/patients/:patientId/pipeline (Task 2.6)
+ * Returns durable pipeline run and 5 stage projections with bounded logs.
+ * Denies access if patient is not in workspace or not assigned to doctor.
+ */
+const getPipelineHandler = async (c: any) => {
+    const user = c.get("user");
+    const patientId = c.req.param("patientId");
+    const correlationId = (c.get("correlationId") as string) || "corr-" + Date.now();
+    const admin = getAdminClient();
+
+    // 1. Verify patient belongs to workspace
+    const { data: patient, error: pErr } = await admin
+        .from("patients")
+        .select("id, workspace_id, is_deleted")
+        .eq("id", patientId)
+        .eq("is_deleted", false)
+        .single();
+
+    if (pErr || !patient || patient.workspace_id !== user.workspaceId) {
+        throw ApiError.notFound("Patient not found");
+    }
+
+    // 2. If doctor, verify active assignment
+    if (user.role === "doctor") {
+        const { data: assignment } = await admin
+            .from("care_team_assignments")
+            .select("id")
+            .eq("patient_id", patientId)
+            .eq("doctor_profile_id", user.profileId)
+            .is("revoked_at", null)
+            .maybeSingle();
+
+        if (!assignment) {
+            throw ApiError.notFound("Patient not found");
+        }
+    }
+
+    // 3. Fetch latest pipeline run
+    const { data: run, error: runErr } = await admin
+        .from("pipeline_runs")
+        .select("*")
+        .eq("patient_id", patientId)
+        .eq("workspace_id", user.workspaceId)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+    if (runErr) {
+        throw ApiError.internal("Failed to retrieve pipeline run", runErr.message);
+    }
+
+    if (!run) {
+        const emptyResponse: PatientPipelineResponse = {
+            run: null,
+            stages: [],
+            correlationId,
+        };
+        return c.json(emptyResponse);
+    }
+
+    // 4. Fetch stages for this run
+    const { data: rawStages, error: stagesErr } = await admin
+        .from("pipeline_stages")
+        .select("*")
+        .eq("pipeline_run_id", run.id);
+
+    if (stagesErr) {
+        throw ApiError.internal("Failed to retrieve pipeline stages", stagesErr.message);
+    }
+
+    const stagesList = rawStages || [];
+    const stageIds = stagesList.map((s: any) => s.id);
+
+    // 5. Fetch bounded recent logs for all stages in run
+    const logsByStageId = new Map<string, any[]>();
+    if (stageIds.length > 0) {
+        const { data: rawLogs } = await admin
+            .from("pipeline_stage_logs")
+            .select("*")
+            .in("pipeline_stage_id", stageIds)
+            .order("created_at", { ascending: true })
+            .limit(100);
+
+        for (const log of rawLogs || []) {
+            const existing = logsByStageId.get(log.pipeline_stage_id) || [];
+            existing.push({
+                id: log.id,
+                pipelineStageId: log.pipeline_stage_id,
+                jobId: log.job_id || undefined,
+                level: log.level as PipelineLogLevel,
+                message: log.message,
+                metadata: log.metadata || undefined,
+                correlationId: log.correlation_id || undefined,
+                createdAt: log.created_at,
+            });
+            logsByStageId.set(log.pipeline_stage_id, existing);
+        }
+    }
+
+    const stageOrder: PipelineStageKey[] = [
+        "reminder_agent",
+        "dose_logging_agent",
+        "pattern_detection_agent",
+        "escalation_agent",
+        "care_team_interaction_agent",
+    ];
+
+    const stagesWithLogs: PipelineStageWithLogs[] = stageOrder
+        .map((key) => stagesList.find((s: any) => s.stage_key === key))
+        .filter((s): s is NonNullable<typeof s> => !!s)
+        .map((s: any) => ({
+            id: s.id,
+            pipelineRunId: s.pipeline_run_id,
+            stageKey: s.stage_key as PipelineStageKey,
+            status: s.status as PipelineStageStatus,
+            agentName: s.agent_name || PIPELINE_STAGE_DISPLAY[s.stage_key as PipelineStageKey] || s.stage_key,
+            attempt: s.attempt || 0,
+            lastJobId: s.last_job_id || undefined,
+            startedAt: s.started_at || undefined,
+            completedAt: s.completed_at || undefined,
+            lastError: s.last_error || undefined,
+            updatedAt: s.updated_at,
+            logs: logsByStageId.get(s.id) || [],
+        }));
+
+    const response: PatientPipelineResponse = {
+        run: {
+            id: run.id,
+            patientId: run.patient_id,
+            workspaceId: run.workspace_id,
+            triggerType: run.trigger_type,
+            triggerId: run.trigger_id || undefined,
+            status: run.status as PipelineRunStatus,
+            correlationId: run.correlation_id,
+            createdAt: run.created_at,
+            startedAt: run.started_at || undefined,
+            completedAt: run.completed_at || undefined,
+            lastError: run.last_error || undefined,
+        },
+        stages: stagesWithLogs,
+        correlationId,
+    };
+
+    return c.json(response);
+};
+
+doctorRouter.get("/patients/:patientId/pipeline", requireRole("doctor", "admin"), getPipelineHandler);
+doctorRouter.get("/pipeline/:patientId", requireRole("doctor", "admin"), getPipelineHandler);
+
+/**
+ * GET /doctor/settings (Task 2.7)
+ * Returns authenticated doctor profile and notification preferences.
+ */
+doctorRouter.get("/settings", requireRole("doctor", "admin"), async (c) => {
+    const user = c.get("user");
+    const correlationId = (c.get("correlationId") as string) || "corr-" + Date.now();
+    const admin = getAdminClient();
+
+    const { data: profile, error } = await admin
+        .from("profiles")
+        .select("id, full_name, email, role, preferences")
+        .eq("id", user.profileId)
+        .single();
+
+    if (error || !profile) {
+        throw ApiError.notFound("Doctor profile not found");
+    }
+
+    const rawPrefs = profile.preferences && typeof profile.preferences === "object" ? profile.preferences : {};
+    const notification = rawPrefs.notification || {
+        channels: ["email", "push"],
+        quietHoursStart: "22:00",
+        quietHoursEnd: "07:00",
+    };
+
+    const response: DoctorSettingsResponse = {
+        profile: {
+            id: profile.id,
+            fullName: profile.full_name,
+            email: profile.email,
+            role: profile.role,
+        },
+        preferences: {
+            displayName: rawPrefs.displayName || profile.full_name,
+            specialty: rawPrefs.specialty || "Internal Medicine",
+            phone: rawPrefs.phone || "",
+            notification: {
+                channels: notification.channels || ["email", "push"],
+                quietHoursStart: notification.quietHoursStart ?? "22:00",
+                quietHoursEnd: notification.quietHoursEnd ?? "07:00",
+            },
+        },
+        correlationId,
+    };
+
+    return c.json(response);
+});
+
+/**
+ * PUT /doctor/settings (Task 2.7)
+ * Validates and updates authenticated doctor profile and notification preferences.
+ */
+doctorRouter.put("/settings", requireRole("doctor", "admin"), async (c) => {
+    const user = c.get("user");
+    const correlationId = (c.get("correlationId") as string) || "corr-" + Date.now();
+    const body = await c.req.json().catch(() => ({}));
+
+    const parseResult = doctorSettingsUpdateSchema.safeParse(body);
+    if (!parseResult.success) {
+        throw ApiError.badRequest("Invalid settings data", parseResult.error.errors);
+    }
+    const validated = parseResult.data;
+    const admin = getAdminClient();
+
+    const { data: existingProfile, error: fetchErr } = await admin
+        .from("profiles")
+        .select("id, full_name, email, role, preferences")
+        .eq("id", user.profileId)
+        .single();
+
+    if (fetchErr || !existingProfile) {
+        throw ApiError.notFound("Doctor profile not found");
+    }
+
+    const currentPrefs =
+        existingProfile.preferences && typeof existingProfile.preferences === "object"
+            ? existingProfile.preferences
+            : {};
+
+    const updatedPrefs: DoctorProfilePreferences = {
+        displayName:
+            validated.displayName !== undefined
+                ? validated.displayName
+                : currentPrefs.displayName || existingProfile.full_name,
+        specialty:
+            validated.specialty !== undefined
+                ? validated.specialty
+                : currentPrefs.specialty || "Internal Medicine",
+        phone: validated.phone !== undefined ? validated.phone : currentPrefs.phone || "",
+        notification: {
+            channels: validated.notification.channels,
+            quietHoursStart: validated.notification.quietHoursStart,
+            quietHoursEnd: validated.notification.quietHoursEnd,
+        },
+    };
+
+    const updatePayload: Record<string, any> = {
+        preferences: updatedPrefs,
+    };
+    if (validated.displayName) {
+        updatePayload["full_name"] = validated.displayName;
+    }
+
+    const { data: updatedProfile, error: updateErr } = await admin
+        .from("profiles")
+        .update(updatePayload)
+        .eq("id", user.profileId)
+        .select("id, full_name, email, role, preferences")
+        .single();
+
+    if (updateErr || !updatedProfile) {
+        throw ApiError.internal("Failed to save doctor settings", updateErr?.message);
+    }
+
+    const response: DoctorSettingsResponse = {
+        profile: {
+            id: updatedProfile.id,
+            fullName: updatedProfile.full_name,
+            email: updatedProfile.email,
+            role: updatedProfile.role,
+        },
+        preferences: updatedPrefs,
+        correlationId,
+    };
+
+    return c.json(response);
+});
+

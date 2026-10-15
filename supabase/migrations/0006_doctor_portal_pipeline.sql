@@ -121,3 +121,15 @@ end $$;
 -- ensures it has a useful structure comment for documentation only.
 comment on column profiles.preferences is
   'Doctor/user preferences JSON. Keys: notification_channels, quiet_hours_start, quiet_hours_end, display_name, specialty, phone.';
+
+-- ─── Adherence Records (aggregated metrics) ───────────────────────────────────
+create table if not exists adherence_records (
+  id              uuid primary key default gen_random_uuid(),
+  patient_id      text not null references patients(id),
+  adherence_rate  numeric(4,3) not null,
+  window_days     integer not null default 30,
+  calculated_at   timestamptz not null default now()
+);
+
+create index if not exists idx_adherence_records_patient
+  on adherence_records(patient_id);

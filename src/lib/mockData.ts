@@ -433,6 +433,176 @@ export const DEMO_PIPELINE_STAGES: PipelineStage[] = [
   },
 ];
 
+export const PATIENT_MOCK_PIPELINES: Record<string, PipelineStage[]> = {
+  // Marcus Rivera (p-001): Normal workflow — completed reminder, active logging, stable adherence
+  "p-001": [
+    {
+      id: "stage-1",
+      name: "Reminder Agent",
+      agentName: "reminder-agent-v2",
+      description: "Generates and sends dose reminders based on schedule",
+      status: "complete",
+      lastRun: "2026-09-12T07:00:00Z",
+      logs: [
+        { id: "l-mr-01", timestamp: "2026-09-12T07:00:12Z", level: "info", message: "Sent reminder for PT-00231 — Metformin 1000mg PM dose", metadata: { patientId: "PT-00231", deliveryStatus: "accepted" } },
+      ],
+    },
+    {
+      id: "stage-2",
+      name: "Dose Logging Agent",
+      agentName: "dose-log-agent-v1",
+      description: "Validates and records patient dose submissions",
+      status: "idle",
+      lastRun: "2026-09-12T09:32:44Z",
+      logs: [
+        { id: "l-mr-02", timestamp: "2026-09-12T09:32:44Z", level: "info", message: "Logged dose: PT-00231 Metformin AM — taken on-time", metadata: { latencyMs: 120 } },
+      ],
+    },
+    {
+      id: "stage-3",
+      name: "Pattern Detection Agent",
+      agentName: "pattern-ai-v3",
+      description: "AI-driven adherence pattern analysis (fully AI-driven, no rule floor)",
+      status: "complete",
+      lastRun: "2026-09-12T09:32:48Z",
+      logs: [
+        { id: "l-mr-03", timestamp: "2026-09-12T09:32:48Z", level: "info", message: "Pattern eval: PT-00231 — severity: none, confidence: 0.89", metadata: { model: "gemini-2.0-flash-001" } },
+      ],
+    },
+    {
+      id: "stage-4",
+      name: "Escalation Agent",
+      agentName: "escalation-agent-v2",
+      description: "Creates escalations and notifies care team based on AI severity judgment",
+      status: "idle",
+      lastRun: "2026-09-10T06:00:04Z",
+      logs: [
+        { id: "l-mr-04", timestamp: "2026-09-10T06:00:04Z", level: "info", message: "No active escalation criteria triggered", metadata: { status: "normal" } },
+      ],
+    },
+    {
+      id: "stage-5",
+      name: "Care Team Interaction Agent",
+      agentName: "careteam-agent-v1",
+      description: "Coordinates escalation outreach and generates reports",
+      status: "complete",
+      lastRun: "2026-09-08T08:00:00Z",
+      logs: [
+        { id: "l-mr-05", timestamp: "2026-09-08T08:00:12Z", level: "info", message: "Weekly report delivered: PT-00231", metadata: { period: "2026-09-01/2026-09-07" } },
+      ],
+    },
+  ],
+
+  // David Kowalski (p-003): Escalation and error workflow — missed doses, urgent escalation, active outreach
+  "p-003": [
+    {
+      id: "stage-1",
+      name: "Reminder Agent",
+      agentName: "reminder-agent-v2",
+      description: "Generates and sends dose reminders based on schedule",
+      status: "complete",
+      lastRun: "2026-09-12T07:00:00Z",
+      logs: [
+        { id: "l-dk-01", timestamp: "2026-09-12T07:00:17Z", level: "warn", message: "Email delivery retry for PT-00253 — bounce on first attempt", metadata: { patientId: "PT-00253", attempt: 2 } },
+      ],
+    },
+    {
+      id: "stage-2",
+      name: "Dose Logging Agent",
+      agentName: "dose-log-agent-v1",
+      description: "Validates and records patient dose submissions",
+      status: "complete",
+      lastRun: "2026-09-10T05:45:00Z",
+      logs: [
+        { id: "l-dk-02", timestamp: "2026-09-10T05:45:00Z", level: "warn", message: "18 consecutive missed doses recorded for Sertraline", metadata: { missedCount: 18 } },
+      ],
+    },
+    {
+      id: "stage-3",
+      name: "Pattern Detection Agent",
+      agentName: "pattern-ai-v3",
+      description: "AI-driven adherence pattern analysis (fully AI-driven, no rule floor)",
+      status: "complete",
+      lastRun: "2026-09-10T06:00:02Z",
+      logs: [
+        { id: "l-dk-03", timestamp: "2026-09-10T06:00:02Z", level: "error", message: "Pattern eval: PT-00253 — severity: urgent, confidence: 0.91 → Critical non-adherence pattern", metadata: { model: "gemini-2.0-flash-001" } },
+      ],
+    },
+    {
+      id: "stage-4",
+      name: "Escalation Agent",
+      agentName: "escalation-agent-v2",
+      description: "Creates escalations and notifies care team based on AI severity judgment",
+      status: "error",
+      lastRun: "2026-09-10T06:00:04Z",
+      logs: [
+        { id: "l-dk-04", timestamp: "2026-09-10T06:00:04Z", level: "error", message: "Escalation created: esc-001 — PT-00253 urgent care team review required", metadata: { notified: "dr-001,ct-002" } },
+      ],
+    },
+    {
+      id: "stage-5",
+      name: "Care Team Interaction Agent",
+      agentName: "careteam-agent-v1",
+      description: "Coordinates escalation outreach and generates reports",
+      status: "running",
+      lastRun: "2026-09-10T06:15:00Z",
+      logs: [
+        { id: "l-dk-05", timestamp: "2026-09-10T06:15:00Z", level: "info", message: "Care team outreach in progress — waiting for doctor acknowledgement", metadata: { status: "pending_acknowledgement" } },
+      ],
+    },
+  ],
+
+  // Sofia Patel (p-004): Empty / idle state — invited patient awaiting activation
+  "p-004": [
+    {
+      id: "stage-1",
+      name: "Reminder Agent",
+      agentName: "reminder-agent-v2",
+      description: "Generates and sends dose reminders based on schedule",
+      status: "idle",
+      logs: [
+        { id: "l-sp-01", timestamp: "2026-09-08T10:00:00Z", level: "info", message: "Patient invited — reminders queued awaiting account activation", metadata: { status: "pending_activation" } },
+      ],
+    },
+    {
+      id: "stage-2",
+      name: "Dose Logging Agent",
+      agentName: "dose-log-agent-v1",
+      description: "Validates and records patient dose submissions",
+      status: "idle",
+      logs: [],
+    },
+    {
+      id: "stage-3",
+      name: "Pattern Detection Agent",
+      agentName: "pattern-ai-v3",
+      description: "AI-driven adherence pattern analysis (fully AI-driven, no rule floor)",
+      status: "idle",
+      logs: [],
+    },
+    {
+      id: "stage-4",
+      name: "Escalation Agent",
+      agentName: "escalation-agent-v2",
+      description: "Creates escalations and notifies care team based on AI severity judgment",
+      status: "idle",
+      logs: [],
+    },
+    {
+      id: "stage-5",
+      name: "Care Team Interaction Agent",
+      agentName: "careteam-agent-v1",
+      description: "Coordinates escalation outreach and generates reports",
+      status: "idle",
+      logs: [],
+    },
+  ],
+};
+
+export function getMockPipelineForPatient(patientId: string): PipelineStage[] {
+  return PATIENT_MOCK_PIPELINES[patientId] || DEMO_PIPELINE_STAGES;
+}
+
 export const DEMO_REPORTS: Report[] = [
   {
     id: "rep-001",
