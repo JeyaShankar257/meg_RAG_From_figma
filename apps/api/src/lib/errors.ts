@@ -33,6 +33,10 @@ export class ApiError extends Error {
         return new ApiError(409, "conflict", message);
     }
 
+    static tooManyRequests(message = "Too many requests") {
+        return new ApiError(429, "rate_limited", message);
+    }
+
     static internal(message = "An unexpected error occurred", details?: unknown) {
         return new ApiError(500, "internal_server_error", message, details);
     }
@@ -43,7 +47,11 @@ export function handleApiError(err: unknown, c: Context) {
 
     if (err instanceof ApiError) {
         if (err.statusCode >= 500) {
-            logger.error(`API Error ${err.statusCode}: ${err.message}`, { correlationId, code: err.code });
+            logger.error(`API Error ${err.statusCode}: ${err.message}`, {
+                correlationId,
+                code: err.code,
+                ...(err.details ? { providerMessage: String(err.details) } : {}),
+            });
         } else {
             logger.warn(`Client Error ${err.statusCode}: ${err.message}`, { correlationId, code: err.code });
         }

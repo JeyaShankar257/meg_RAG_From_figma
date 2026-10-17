@@ -13,9 +13,9 @@ export default function PatientLogin() {
 
   const { signIn } = useSession()
 
-  const [email, setEmail] = useState("m.rivera@email.com")
+  const [email, setEmail] = useState("")
 
-  const [password, setPassword] = useState("demo-password")
+  const [password, setPassword] = useState("")
 
   const [loading, setLoading] = useState(false)
 
@@ -182,7 +182,7 @@ export default function PatientLogin() {
 
           <div className="mt-6 p-4 bg-cyan-50 border border-cyan-100 rounded-lg">
             <p className="text-xs text-cyan-700 font-medium mb-1">
-              Demo credentials pre-filled
+              Sign in with your Supabase account
             </p>
             <p className="text-xs text-cyan-600">
               Logged in as Marcus Rivera (PT-00231). Demo environment with

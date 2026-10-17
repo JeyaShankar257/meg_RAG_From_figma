@@ -13,9 +13,9 @@ export default function DoctorLogin() {
 
   const { signIn } = useSession()
 
-  const [email, setEmail] = useState("s.chen@mednova.clinic")
+  const [email, setEmail] = useState("")
 
-  const [password, setPassword] = useState("demo-password")
+  const [password, setPassword] = useState("")
 
   const [loading, setLoading] = useState(false)
 
@@ -30,7 +30,11 @@ export default function DoctorLogin() {
 
     void signIn(email, password, "doctor")
 
-      .then(() => navigate("/doctor"))
+      .then((user) =>
+        navigate(
+          user.mustChangePassword ? "/doctor/change-password" : "/doctor",
+        ),
+      )
 
       .catch((loginError: Error) =>
         setError(loginError.message || "Unable to sign in."),
@@ -183,7 +187,7 @@ export default function DoctorLogin() {
 
           <div className="mt-6 p-4 bg-teal-50 border border-teal-100 rounded-lg">
             <p className="text-xs text-teal-700 font-medium mb-1">
-              Demo credentials pre-filled
+              Sign in with your Supabase account
             </p>
             <p className="text-xs text-teal-600">
               This is a demo environment with fictional patient data.

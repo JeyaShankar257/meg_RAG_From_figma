@@ -27,7 +27,7 @@ export async function authMiddleware(c: Context, next: Next) {
         if (token.startsWith("demo-token-doctor")) {
             const { data: profile } = await getAdminClient()
                 .from("profiles")
-                .select("id, workspace_id, role, email")
+                .select("id, workspace_id, role, email, must_change_password")
                 .eq("email", "s.chen@mednova.clinic")
                 .maybeSingle();
             c.set("user", {
@@ -84,7 +84,7 @@ export async function authMiddleware(c: Context, next: Next) {
 
     const { data: profile, error: profErr } = await admin
         .from("profiles")
-        .select("id, workspace_id, role, email")
+        .select("id, workspace_id, role, email, approval_status, must_change_password")
         .eq("id", authData.user.id)
         .single();
 
@@ -92,11 +92,46 @@ export async function authMiddleware(c: Context, next: Next) {
         throw ApiError.forbidden("User profile not found or inactive");
     }
 
+    // Role-specific approval and verification checks
+    if (profile.role === "doctor" && profile.approval_status !== "approved") {
+        throw ApiError.forbidden("Your doctor account is awaiting administrator approval");
+    }
+
+    let patientId: string | undefined = undefined;
+    if (profile.role === "patient") {
+        const { data: patient } = await admin
+            .from("patients")
+            .select("id, status")
+            .eq("profile_id", profile.id)
+            .eq("is_deleted", false)
+            .maybeSingle();
+
+        if (!patient || patient.status !== "active") {
+            throw ApiError.forbidden("Patient account has not been activated or is inactive");
+        }
+        patientId = patient.id;
+    }
+
+    const mustChangePassword = Boolean(profile.must_change_password);
+
+    // If forced to change password, deny access to protected clinical resources
+    const currentPath = c.req.path;
+    const isExemptPath =
+        currentPath.endsWith("/auth/change-password") ||
+        currentPath.endsWith("/auth/me") ||
+        currentPath.endsWith("/auth/logout");
+
+    if (mustChangePassword && !isExemptPath) {
+        throw ApiError.forbidden("Temporary password must be changed before accessing clinical resources");
+    }
+
     c.set("user", {
         profileId: profile.id,
         workspaceId: profile.workspace_id,
         role: profile.role,
         email: profile.email,
+        mustChangePassword,
+        patientId,
     });
     c.set("accessToken", token);
 

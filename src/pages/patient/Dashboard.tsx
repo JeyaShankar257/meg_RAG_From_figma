@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { DEMO_PRESCRIPTIONS, DEMO_ADHERENCE, DEMO_SPARKLINE } from "../../lib/mockData";
 import Card from "../../components/ui/Card";
 import Badge from "../../components/ui/Badge";
 import Button from "../../components/ui/Button";
@@ -20,14 +19,34 @@ type PatientMedication = {
   };
 };
 
-type AdherenceSummary = typeof DEMO_ADHERENCE;
+type AdherenceSummary = {
+  score: number;
+  trend: number;
+  taken: number;
+  late: number;
+  skipped: number;
+  missed: number;
+  deliveryFailures: number;
+};
 
 function summarizeAdherence(logs: Array<{ status?: string }>): AdherenceSummary {
-  const summary = { ...DEMO_ADHERENCE };
+  const summary: AdherenceSummary = {
+    score: 0,
+    trend: 0,
+    taken: 0,
+    late: 0,
+    skipped: 0,
+    missed: 0,
+    deliveryFailures: 0,
+  };
   summary.taken = logs.filter((log) => log.status === "taken").length;
   summary.late = logs.filter((log) => log.status === "late").length;
   summary.missed = logs.filter((log) => log.status === "missed").length;
   summary.skipped = logs.filter((log) => log.status === "skipped").length;
+  const completed = summary.taken + summary.late + summary.missed + summary.skipped;
+  summary.score = completed
+    ? Math.round(((summary.taken + summary.late) / completed) * 100)
+    : 0;
   return summary;
 }
 
@@ -55,22 +74,8 @@ function useCountdown(targetTime: string) {
 export default function PatientDashboard() {
   const { user } = useSession();
   const navigate = useNavigate();
-  const nextDose = useCountdown("19:00");
-  const [activeMeds, setActiveMeds] = useState<PatientMedication[]>(() =>
-    isBackendConfigured()
-      ? []
-      : DEMO_PRESCRIPTIONS.filter((rx) => rx.status === "active").map((rx) => ({
-          id: rx.id,
-          medication: {
-            name: rx.medication.name,
-            strength: rx.medication.strength,
-            unit: rx.medication.unit,
-            frequency: rx.medication.frequency,
-            nextDose: rx.medication.nextDose ?? "See dose schedule",
-          },
-        })),
-  );
-  const [adherence, setAdherence] = useState(DEMO_ADHERENCE);
+  const [activeMeds, setActiveMeds] = useState<PatientMedication[]>([]);
+  const [adherence, setAdherence] = useState<AdherenceSummary>(() => summarizeAdherence([]));
   const [loading, setLoading] = useState(isBackendConfigured());
   const [error, setError] = useState("");
   useEffect(() => {
@@ -102,8 +107,8 @@ export default function PatientDashboard() {
     <div className="p-4 lg:p-6 space-y-5 animate-fade-in">
       {/* Welcome */}
       <div>
-        <h1 className="text-xl font-bold text-slate-900">Good morning, Marcus</h1>
-        <p className="text-slate-500 text-sm">Saturday, September 12, 2026 · PT-00231</p>
+        <h1 className="text-xl font-bold text-slate-900">Your care summary</h1>
+        <p className="text-slate-500 text-sm">{new Date().toLocaleDateString()}</p>
       </div>
       {loading && <p className="text-sm text-slate-500">Loading your care summary…</p>}
       {error && <p className="text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded-lg p-3">{error}</p>}
@@ -113,12 +118,18 @@ export default function PatientDashboard() {
         <div className="flex items-center justify-between">
           <div>
             <p className="text-teal-200 text-sm font-medium mb-1">Next Dose Due</p>
-            <p className="text-2xl font-bold">Metformin 1000mg</p>
-            <p className="text-teal-200 text-sm mt-0.5">Today, 7:00 PM · with dinner</p>
+            <p className="text-2xl font-bold">
+              {activeMeds[0]
+                ? `${activeMeds[0].medication.name} ${activeMeds[0].medication.strength}${activeMeds[0].medication.unit}`
+                : "No upcoming dose"}
+            </p>
+            <p className="text-teal-200 text-sm mt-0.5">
+              {activeMeds[0]?.medication.frequency || "Your schedule will appear here"}
+            </p>
           </div>
           <div className="text-right">
-            <div className="text-3xl font-mono font-bold">{nextDose}</div>
-            <div className="text-teal-200 text-xs">remaining</div>
+            <div className="text-3xl font-mono font-bold">—</div>
+            <div className="text-teal-200 text-xs">live schedule</div>
           </div>
         </div>
         <Button
@@ -152,15 +163,17 @@ export default function PatientDashboard() {
       {/* Adherence ring + trend */}
       <Card padding="md">
         <div className="flex items-center gap-5">
-          <AdherenceRing score={84} size={100} />
+          <AdherenceRing score={adherence.score} size={100} />
           <div className="flex-1">
             <div className="flex items-center gap-2 mb-1">
               <h3 className="text-sm font-semibold text-slate-900">Overall Adherence</h3>
-              <Badge variant="success">↑ +6.2%</Badge>
+              <Badge variant={adherence.trend >= 0 ? "success" : "warning"}>
+                {adherence.trend >= 0 ? "↑" : "↓"} {Math.abs(adherence.trend)}%
+              </Badge>
             </div>
             <p className="text-xs text-slate-500 mb-3">Your score has improved over the last 3 months. Keep it up!</p>
             <div className="h-10">
-              <TrendSparkline data={DEMO_SPARKLINE} color="#0d9488" />
+              <p className="text-xs text-slate-400">Trend data will appear as adherence is recorded.</p>
             </div>
           </div>
         </div>

@@ -58,6 +58,12 @@ Edit each `.env` file and fill in:
 > **Demo mode**: Set `DEMO_MODE=true` in development to allow seed routes and
 > mock fallbacks. Must be `false` or unset in production.
 
+The checked-in local runtime is configured for live mode (`DEMO_MODE=false`).
+Create real Supabase Auth users and related profile/patient records before
+logging in. The API and worker commands load their app-specific `.env` first and then the
+root `.env`; Node preserves the first value for duplicate variables, so the
+app-specific file is authoritative.
+
 ---
 
 ## 3. Set up Supabase
@@ -92,6 +98,102 @@ pnpm --filter @mednova/api seed:demo
 Copy the hosted project's API URL, anon key, and service-role key into
 `apps/api/.env` and `apps/worker/.env` from `.env.example`. The service-role
 key is server-only and must never be placed in Vite variables or committed.
+For newer Supabase projects, `SUPABASE_SECRET_KEY` is dedicated for Supabase Auth Admin operations (`auth.admin.inviteUserByEmail`, `auth.admin.updateUserById`, `auth.admin.deleteUser`), while `SUPABASE_SERVICE_ROLE_KEY` is used for database queries and bypassing Row Level Security (RLS) on backend services.
+When both are present, the API maps `SUPABASE_SECRET_KEY` to the Auth Admin client and `SUPABASE_SERVICE_ROLE_KEY` to the PostgREST admin client.
+
+### Controlled Authentication & Migration Order
+
+The migration history under `supabase/migrations/` establishes the 3-tier identity and clinical model:
+1. `20260330100000_mednova_foundation.sql`: Core clinical schema (`workspaces`, `profiles`, `patients`, `prescriptions`, `visits`, `audit_events`).
+2. `20261017110000_doctor_portal_backend_workflows.sql`: Workflow state and RLS policies.
+3. `20261017120000_controlled_authentication_hardening.sql`: Hardened `provision_invited_profile` function with explicit search path, added `activated_at` column to `patients`, `activate_patient_account` RPC, SQL check constraint `audit_events_no_sensitive_data` preventing password/secret leaks, and `reconcile_workspace_orphans` procedure.
+
+Apply all migrations with:
+```bash
+supabase db push
+```
+
+### Allowed Activation Redirects
+
+Supabase Auth requires configured redirect URLs for invitations and password recovery.
+In `apps/api/.env`:
+```env
+ALLOWED_ACTIVATION_REDIRECTS=http://localhost:5173/activate,http://localhost:5173/doctor/activate,http://localhost:8443/activate,http://localhost:8443/doctor/activate
+```
+Ensure these exact URLs are added to the **Redirect URLs** list in Supabase Dashboard → Authentication → URL Configuration.
+
+### Account Credentials Matrix (Development & Test Environments)
+
+> [!IMPORTANT]
+> Passwords in MedNova are **NEVER** stored in plain text anywhere in database tables. Passwords reside exclusively hashed inside Supabase Auth (`auth.users`).
+> The following table documents initial / seed development credentials for local and staging verification:
+
+| User Identity | Role | Portal | Initial / Temporary Password | Lifecycle State | Access Scope |
+|---|---|---|---|---|---|
+| `admin@mednova.clinic` | `admin` | Doctor (`/doctor/login`) | `adminPassword123` | Approved | Full administrative access, physician management (`/doctor/admin/accounts`), audit trail inspection. |
+| `s.chen@mednova.clinic` | `doctor` | Doctor (`/doctor/login`) | `doctorPassword123` | Approved | Assigned clinical patients, prescriptions, RAG reviews, patient creation. |
+| `invited.doctor@mednova.clinic` | `doctor` | Doctor (`/doctor/login`) | *Set by Admin* or via `/doctor/activate` | Pending → Approved | Locked to `/doctor/change-password` if `mustChangePassword` is true; clinical routes blocked until approved. |
+| `m.rivera@email.com` | `patient` | Patient (`/patient/login`) | `password123` | Active / Verified | Marcus Rivera (PT-001) dose center, visits, transparency reports, settings. |
+| `d.kowalski@email.com` | `patient` | Patient (`/patient/login`) | `password123` | Active / Verified | David Kowalski (PT-003) dose center, adherence escalations. |
+| `s.patel@email.com` | `patient` | Patient (`/patient/login`) | *Set via `/activate`* | Pending → Active | Sofia Patel (PT-004) unverified until invitation accepted at `/activate`. |
+
+### Controlled Account Provisioning Workflow
+
+1. **Doctor Lifecycle**:
+   - **Invitation**: An Administrator invites the doctor via `POST /auth/doctor-invitations` or the Admin Doctor Management UI (`/doctor/admin/accounts`). An Auth user and `public.profiles` row are created with `approval_status = 'pending'`.
+   - **Approval**: The Administrator reviews and approves the doctor (`POST /auth/doctor-invitations/:id/approve`). Unapproved doctors receive `403 Forbidden` (`account_pending_approval`) when attempting to sign in.
+   - **Temporary Password**: An Administrator can set a temporary password via `POST /auth/doctor-invitations/:id/temporary-password`. The profile is marked `must_change_password = true`.
+   - **Forced Password Change**: Upon signing in, the doctor is immediately routed to `/doctor/change-password` and locked out of all clinical routes until a new 8+ character password is saved.
+
+2. **Patient Lifecycle**:
+   - **Provisioning**: A doctor creates a patient via `POST /patients` (or the Doctor Portal UI). The patient record is created with `status = 'pending'`.
+   - **Compensating Rollback**: If Supabase Auth invitation creation fails, the API immediately rolls back the inserted `patients`, `consent_records`, and `conditions` rows. If profile creation fails after Auth user creation, the Auth user is quarantined/deleted to prevent orphaned identities.
+   - **Activation**: The patient receives an invitation email and navigates to `/activate#access_token=...`.
+   - **Single-use Fragment**: The page parses the token once, strips the token fragment from `window.location` to prevent token leakage via referrer headers, and calls `POST /auth/accept-invitation`.
+   - **Activation RPC**: The database updates the patient to `status = 'active'`, sets `activated_at = now()`, and logs an audit event without sensitive tokens. Pending patients cannot log in or access clinical endpoints before activation.
+
+### Test Email & Disposable Account Guidance
+
+- **Domain isolation**: For automated and disposable test runs, use dedicated disposable domains like `test-doctor-<uuid>@mednova.clinic` and `test-patient-<uuid>@example.com`.
+- **Resend test deliveries**: In development with Resend, test emails can be sent to `delivered@resend.dev` to verify API calls without hitting actual physician inboxes.
+- **Rate-limit recovery**: Supabase Auth enforces rate limits on signup and recovery emails (default 3-4 emails per hour). When testing repeated invitations, configure temporary passwords instead of email resends to bypass provider email rate limits.
+
+### Credential Rotation Requirements
+
+When rotating database or API credentials:
+1. Generate the new `SUPABASE_SERVICE_ROLE_KEY` or `SUPABASE_SECRET_KEY` in the Supabase Dashboard.
+2. Update the environment variables in `apps/api/.env` and `apps/worker/.env`.
+3. Verify connectivity via `GET /health/diagnostics` (inspect `serviceRoleKeyPresent: true` and `authAdminKeyPresent: true`).
+4. Invalidate existing sessions: Run `POST /auth/logout` or revoke active refresh tokens in Supabase Auth if compromise is suspected.
+
+---
+
+## 4. End-to-End Test Checklist (Task 4.2)
+
+Use this checklist to verify complete identity and clinical boundaries in live staging:
+
+### Administrator & Doctor Flow
+- [ ] Sign in as `admin@mednova.clinic` at `/doctor/login`. Verify access to `/doctor/admin/accounts`.
+- [ ] Navigate to `/doctor/admin/accounts` and click "+ Invite Doctor". Enter disposable name and email `test-doc@mednova.clinic`. Select "Provision with temporary password" (`TempPass123!`). Submit and verify doctor appears with "Pending Approval" and "Temporary Password" badges.
+- [ ] Attempt to sign in as `test-doc@mednova.clinic` at `/doctor/login` using `TempPass123!`. Verify login is rejected with HTTP 403 `account_pending_approval`.
+- [ ] In the Administrator window, click "Approve". Verify status updates to "Approved".
+- [ ] Sign in as `test-doc@mednova.clinic`. Verify the browser immediately redirects to `/doctor/change-password` and sidebar links to patients/dashboard are disabled.
+- [ ] Attempt to manually navigate to `/doctor` or `/doctor/settings`. Verify immediate bounce back to `/doctor/change-password`.
+- [ ] Submit a new password (`PrivatePass456!`). Verify successful change and seamless transition into `/doctor` Dashboard.
+- [ ] Sign out and log back in with `PrivatePass456!`. Verify normal doctor dashboard access.
+
+### Patient Flow
+- [ ] As an authorized doctor, navigate to `/doctor/patients/new` and submit a new patient `Eleanor Vance`, email `test-patient@example.com`.
+- [ ] Verify the patient is registered in `status = 'pending'`.
+- [ ] Attempt to log into `/patient/login` with `test-patient@example.com`. Verify rejected with HTTP 401/403.
+- [ ] Navigate to `/activate#access_token=mock-valid-token` (or use the email link). Verify the token fragment is stripped from the URL bar immediately.
+- [ ] Submit a new password. Verify activation succeeds and patient status transitions to `active`.
+- [ ] Sign in at `/patient/login`. Verify patient dashboard displays dose tracking and visits.
+
+### Error & Provider Recovery Flow
+- [ ] Navigate to `/activate#error=access_denied&error_code=otp_expired`. Verify informative banner: "Your invitation link has expired...".
+- [ ] Simulate provider rate limit (HTTP 429). Verify UI presents friendly notice: "Too many attempts. Please wait a few moments before trying again."
+- [ ] Query `/auth/reconcile-orphans` as Admin. Verify orphan table loads and allows targeted cleanup of dangling records.
 
 ---
 

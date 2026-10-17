@@ -15,8 +15,12 @@ import CareTeamPage from "./pages/doctor/CareTeamPage"
 import NewPatient from "./pages/doctor/NewPatient"
 
 import DoctorSettings from "./pages/doctor/Settings"
+import ChangePassword from "./pages/doctor/ChangePassword"
+import DoctorAcceptInvitation from "./pages/doctor/AcceptInvitation"
+import AdminDoctorManagement from "./pages/doctor/AdminDoctorManagement"
 
 import PatientLogin from "./pages/patient/Login"
+import AcceptInvitation from "./pages/patient/AcceptInvitation"
 
 import PatientShell from "./components/patient/PatientShell"
 
@@ -44,6 +48,7 @@ export default function App() {
 
           {/* Doctor auth */}
           <Route path="/doctor/login" element={<DoctorLogin />} />
+          <Route path="/doctor/activate" element={<DoctorAcceptInvitation />} />
 
           {/* Doctor portal */}
           <Route
@@ -55,6 +60,7 @@ export default function App() {
             }
           >
             <Route index element={<DoctorDashboard />} />
+            <Route path="change-password" element={<ChangePassword />} />
             <Route path="patients/new" element={<NewPatient />} />
             <Route path="patients/:patientId" element={<PatientPage />} />
             <Route
@@ -62,10 +68,12 @@ export default function App() {
               element={<CareTeamPage />}
             />
             <Route path="settings" element={<DoctorSettings />} />
+            <Route path="admin/accounts" element={<AdminDoctorManagement />} />
           </Route>
 
           {/* Patient auth */}
           <Route path="/patient/login" element={<PatientLogin />} />
+          <Route path="/activate" element={<AcceptInvitation />} />
 
           {/* Patient portal */}
           <Route

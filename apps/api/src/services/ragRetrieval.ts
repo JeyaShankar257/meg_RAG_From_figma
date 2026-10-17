@@ -1,4 +1,4 @@
-import crypto from "node:crypto";
+import { createHash } from "node:crypto";
 import type {
     KnowledgeChunk,
     KnowledgeSource,
@@ -20,7 +20,7 @@ export function generateGeminiCompatibleEmbedding(
     model = "text-embedding-004",
 ): number[] {
     const dim = 768;
-    const hash = crypto.createHash("sha256").update(`${model}:${text}`).digest();
+    const hash = createHash("sha256").update(`${model}:${text}`).digest();
     const vec: number[] = new Array(dim);
 
     for (let i = 0; i < dim; i++) {
@@ -89,6 +89,7 @@ export interface RankedRetrievalResult {
     similarityScore: number;
     chunkIndex: number;
     rank: number;
+    patientId?: string | null;
 }
 
 /**
@@ -197,6 +198,7 @@ export function filterAndRankChunks(params: VectorSearchParams): RankedRetrieval
                 chunkText: chunk.chunkText,
                 similarityScore: score,
                 chunkIndex: chunk.chunkIndex,
+                patientId: source.patientId ?? chunk.patientId ?? null,
             });
         }
     }

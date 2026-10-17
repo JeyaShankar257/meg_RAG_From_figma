@@ -12,14 +12,36 @@
  * 8. Citation inspection without record mutation
  */
 
-import assert from "node:assert/strict";
-import clinicalSourcesFixture from "../packages/contracts/fixtures/rag-clinical-sources.fixture.json" with { type: "json" };
+import { strict as assert } from "node:assert";
+import { readFileSync } from "node:fs";
 import {
   cosineSimilarity,
   filterAndRankChunks,
   generateGeminiCompatibleEmbedding,
   type VectorSearchCandidate,
 } from "../apps/api/src/services/ragRetrieval.js";
+
+const clinicalSourcesFixture = JSON.parse(
+  readFileSync(
+    new URL("../packages/contracts/fixtures/rag-clinical-sources.fixture.json", import.meta.url),
+    "utf-8"
+  )
+) as {
+  sources: Array<{
+    id: string;
+    sourceType: string;
+    title: string;
+    workspaceId: string;
+    patientId?: string | null;
+    status: "draft" | "reviewed" | "archived";
+    version: string;
+    chunks: Array<{
+      id: string;
+      chunkIndex: number;
+      chunkText: string;
+    }>;
+  }>;
+};
 
 async function runE2eRagWorkflow() {
   console.log("=== Starting MedNova RAG E2E Fictional Data Workflow ===");

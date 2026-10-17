@@ -659,24 +659,42 @@ doctorRouter.get("/dashboard", requireRole("doctor", "admin"), async (c) => {
     let remindersDelivered: DashboardMetric<number>;
     let recentActivity: DashboardActivity[] = [];
 
-    // Adherence query
+    // Prefer the materialized summary when available; older hosted projects
+    // can derive the same metric from authoritative dose logs.
     try {
         const { data: adhRecords, error: adhErr } = await admin
             .from("adherence_records")
             .select("adherence_rate")
             .in("patient_id", assignedPatientIds);
 
-        if (adhErr) throw adhErr;
-        if (adhRecords && adhRecords.length > 0) {
-            const total = adhRecords.reduce((acc, r) => acc + (Number(r.adherence_rate) || 0), 0);
+        if (!adhErr && adhRecords && adhRecords.length > 0) {
+            const total = adhRecords.reduce(
+                (acc, record) => acc + (Number(record.adherence_rate) || 0),
+                0,
+            );
             const avgRaw = total / adhRecords.length;
-            const avgPct = avgRaw <= 1 ? avgRaw * 100 : avgRaw;
             averageAdherence = {
-                value: Math.round(avgPct * 10) / 10,
+                value: Math.round((avgRaw <= 1 ? avgRaw * 100 : avgRaw) * 10) / 10,
                 availability: "available",
             };
         } else {
-            averageAdherence = { value: 0, availability: "available" };
+            const { data: doseLogs, error: doseErr } = await admin
+                .from("dose_logs")
+                .select("status")
+                .in("patient_id", assignedPatientIds);
+            if (doseErr) throw doseErr;
+            const completed = (doseLogs ?? []).filter((log) =>
+                ["taken", "late", "missed", "skipped"].includes(log.status),
+            );
+            const successful = completed.filter((log) =>
+                ["taken", "late"].includes(log.status),
+            );
+            averageAdherence = {
+                value: completed.length
+                    ? Math.round((successful.length / completed.length) * 1000) / 10
+                    : 0,
+                availability: "available",
+            };
         }
     } catch (err: any) {
         averageAdherence = {
@@ -690,7 +708,7 @@ doctorRouter.get("/dashboard", requireRole("doctor", "admin"), async (c) => {
     try {
         const { data: escRecords, error: escErr } = await admin
             .from("escalations")
-            .select("id, patient_id, severity, reasoning, created_at, correlation_id")
+            .select("id, patient_id, severity, reasoning, created_at")
             .in("patient_id", assignedPatientIds)
             .eq("status", "open");
 
@@ -708,7 +726,7 @@ doctorRouter.get("/dashboard", requireRole("doctor", "admin"), async (c) => {
                 patientId: esc.patient_id,
                 patientName: patientMap.get(esc.patient_id) || "Assigned Patient",
                 timestamp: esc.created_at,
-                correlationId: esc.correlation_id || correlationId,
+                correlationId,
             });
         }
     } catch (err: any) {
@@ -1057,4 +1075,3 @@ doctorRouter.put("/settings", requireRole("doctor", "admin"), async (c) => {
 
     return c.json(response);
 });
-

@@ -2,6 +2,7 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { getConfig } from "../config.js";
 
 let _adminClient: SupabaseClient | null = null;
+let _authAdminClient: SupabaseClient | null = null;
 
 /**
  * Returns the privileged Supabase admin client using the service role key.
@@ -22,6 +23,19 @@ export function getAdminClient(): SupabaseClient {
  */
 export function setAdminClient(client: SupabaseClient | null): void {
     _adminClient = client;
+    _authAdminClient = client;
+}
+
+export function getAuthAdminClient(): SupabaseClient {
+    if (!_authAdminClient) {
+        const config = getConfig();
+        _authAdminClient = createClient(
+            config.supabaseUrl,
+            config.authAdminKey || config.supabaseSecretKey || config.supabaseServiceRoleKey,
+            { auth: { persistSession: false, autoRefreshToken: false } },
+        );
+    }
+    return _authAdminClient;
 }
 
 /**

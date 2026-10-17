@@ -34,7 +34,11 @@ type ApiPatient = {
   contact_email?: string
   date_of_birth?: string
   contact_phone?: string
+  gender?: string
+  address?: string
   status?: "active" | "invited" | "pending" | "inactive"
+  conditions?: Array<string | { name?: string }>
+  visits?: Array<{ visit_date?: string }>
 }
 
 export function normalizePatient(patient: ApiPatient): Patient {
@@ -49,23 +53,35 @@ export function normalizePatient(patient: ApiPatient): Patient {
     name,
     email: patient.contact_email ?? "",
     dob: patient.date_of_birth ?? "",
-    age: 0,
-    gender: "",
+    age: patient.date_of_birth
+      ? Math.max(
+          0,
+          new Date().getFullYear() - new Date(patient.date_of_birth).getFullYear(),
+        )
+      : 0,
+    gender: patient.gender ?? "",
     phone: patient.contact_phone ?? "",
-    address: "",
+    address: patient.address ?? "",
     status:
       patient.status === "inactive" ? "pending" : (patient.status ?? "pending"),
     assignedDoctor: "",
     careTeam: [],
-    conditions: Array.isArray(
-      (patient as ApiPatient & { conditions?: string[] }).conditions,
-    )
-      ? (patient as ApiPatient & { conditions: string[] }).conditions
+    conditions: Array.isArray(patient.conditions)
+      ? patient.conditions
+          .map((condition) =>
+            typeof condition === "string" ? condition : condition.name,
+          )
+          .filter((condition): condition is string => Boolean(condition))
       : [],
     adherenceScore: 0,
     trend: "stable",
     hasEscalation: false,
-    lastVisit: "",
+    lastVisit:
+      patient.visits
+        ?.map((visit) => visit.visit_date)
+        .filter((date): date is string => Boolean(date))
+        .sort()
+        .at(-1) ?? "",
   }
 }
 
@@ -134,6 +150,32 @@ export interface ApiUser {
 
   fullName?: string
 
+  mustChangePassword?: boolean
+
+  approvalStatus?: "pending" | "approved" | "rejected"
+
+  isVerified?: boolean
+
+  patientStatus?: "pending" | "active" | "inactive"
+
+  workspaceId?: string
+}
+
+export interface DoctorInvitation {
+  id: string
+  email: string
+  fullName: string
+  approvalStatus: "pending" | "approved" | "rejected"
+  mustChangePassword: boolean
+  workspaceId: string
+  createdAt?: string
+}
+
+export interface OrphanRecord {
+  id: string
+  type: "auth_user" | "profile" | "patient"
+  identifier: string
+  details: string
   workspaceId?: string
 }
 
@@ -244,6 +286,25 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 
 export const api = {
   auth: {
+    acceptInvitation: async (accessToken: string, password: string) => {
+      const response = await fetch(`${API_BASE}/auth/accept-invitation`, {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ accessToken, password }),
+      });
+      const body = (await response.json().catch(() => ({}))) as {
+        message?: string;
+        email?: string;
+      };
+      if (!response.ok) {
+        throw new Error(body.message ?? "Invitation could not be accepted.");
+      }
+      return body;
+    },
+
     async login(email: string, password: string, portal: PortalRole) {
       if (!isBackendConfigured() && import.meta.env?.DEV) {
         if (!email || !password)
@@ -288,6 +349,12 @@ export const api = {
 
     me: () => request<{ user: ApiUser }>("/auth/me"),
 
+    changePassword: (password: string) =>
+      request<{ success: boolean; message: string }>("/auth/change-password", {
+        method: "POST",
+        body: JSON.stringify({ password }),
+      }),
+
     refresh: (refreshToken: string) =>
       request<{ token: string; refreshToken: string }>("/auth/refresh", {
         method: "POST",
@@ -315,6 +382,68 @@ export const api = {
             },
           )
         : Promise.resolve({ success: true, settings }),
+
+    doctorInvitations: {
+      list: (filter?: "pending" | "all") =>
+        request<{ success: boolean; invitations: DoctorInvitation[] }>(
+          `/auth/doctor-invitations${filter ? `?filter=${filter}` : ""}`,
+        ),
+      create: (data: {
+        email: string
+        fullName: string
+        temporaryPassword?: string
+        sendInvitationEmail?: boolean
+      }) =>
+        request<{
+          success: boolean
+          message: string
+          user: { id: string; email: string }
+        }>("/auth/doctor-invitations", {
+          method: "POST",
+          body: JSON.stringify(data),
+        }),
+      approve: (id: string) =>
+        request<{ success: boolean; message: string }>(
+          `/auth/doctor-invitations/${id}/approve`,
+          { method: "POST" },
+        ),
+      reject: (id: string) =>
+        request<{ success: boolean; message: string }>(
+          `/auth/doctor-invitations/${id}/reject`,
+          { method: "POST" },
+        ),
+      setTemporaryPassword: (id: string, temporaryPassword: string) =>
+        request<{ success: boolean; message: string }>(
+          `/auth/doctor-invitations/${id}/temporary-password`,
+          {
+            method: "POST",
+            body: JSON.stringify({ temporaryPassword }),
+          },
+        ),
+      resend: (id: string) =>
+        request<{ success: boolean; message: string }>(
+          `/auth/doctor-invitations/${id}/resend`,
+          { method: "POST" },
+        ),
+    },
+
+    orphans: {
+      list: () =>
+        request<{ success: boolean; orphans: OrphanRecord[] }>(
+          "/auth/reconcile-orphans",
+        ),
+      cleanup: (
+        orphanId: string,
+        orphanType: "auth_user" | "profile" | "patient",
+      ) =>
+        request<{ success: boolean; message: string }>(
+          "/auth/reconcile-orphans",
+          {
+            method: "POST",
+            body: JSON.stringify({ orphanId, orphanType }),
+          },
+        ),
+    },
   },
 
   patients: {

@@ -143,19 +143,72 @@ export function RequireRole({
 
   const navigate = useNavigate()
 
-  useEffect(() => {
-    if (!loading && (!user || user.role !== role)) {
-      navigate(`/${role}/login`, {
-        replace: true,
-        state: { from: location.pathname },
-      })
-    }
-  }, [loading, location.pathname, navigate, role, user])
+  const isApproved =
+    user?.role !== "doctor" ||
+    user?.approvalStatus === "approved" ||
+    user?.approvalStatus === undefined
 
-  if (loading || !user || user.role !== role) {
+  const isPatientActive =
+    user?.role !== "patient" ||
+    user?.patientStatus === "active" ||
+    user?.patientStatus === undefined
+
+  const hasPortalAccess =
+    user !== null &&
+    isApproved &&
+    isPatientActive &&
+    (user.role === role ||
+      (role === "doctor" &&
+        (user.role === "admin" || user.role === "care_team")))
+
+  useEffect(() => {
+    if (!loading) {
+      if (!hasPortalAccess) {
+        navigate(`/${role}/login`, {
+          replace: true,
+          state: {
+            from: location.pathname,
+            error:
+              user && !isApproved
+                ? "Your doctor account is pending administrator approval."
+                : user && !isPatientActive
+                  ? "Your patient account is pending activation."
+                  : undefined,
+          },
+        })
+      } else if (
+        user?.mustChangePassword &&
+        location.pathname !== "/doctor/change-password"
+      ) {
+        navigate("/doctor/change-password", { replace: true })
+      }
+    }
+  }, [
+    hasPortalAccess,
+    isApproved,
+    isPatientActive,
+    loading,
+    location.pathname,
+    navigate,
+    role,
+    user,
+  ])
+
+  if (loading || !hasPortalAccess) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center text-sm text-slate-500">
         Checking your session...
+      </div>
+    )
+  }
+
+  if (
+    user?.mustChangePassword &&
+    location.pathname !== "/doctor/change-password"
+  ) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center text-sm text-slate-500">
+        Redirecting to required password change...
       </div>
     )
   }

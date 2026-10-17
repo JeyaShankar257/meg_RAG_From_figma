@@ -167,17 +167,28 @@ vi.mock("../lib/supabase.js", () => {
         return query;
     };
 
-    return {
-        getAdminClient: vi.fn(() => ({
+    const createClient = () => ({
             from: mockFrom,
+            rpc: vi.fn().mockResolvedValue({ data: "patient-auth-001", error: null }),
             auth: {
+                admin: {
+                    inviteUserByEmail: vi.fn().mockResolvedValue({
+                        data: { user: { id: "patient-auth-001" } },
+                        error: null,
+                    }),
+                    deleteUser: vi.fn().mockResolvedValue({ error: null }),
+                },
                 signInWithPassword: vi.fn(),
                 signOut: vi.fn(),
                 refreshSession: vi.fn(),
                 resetPasswordForEmail: vi.fn().mockResolvedValue({}),
                 getUser: vi.fn(),
             },
-        })),
+        });
+
+    return {
+        getAdminClient: vi.fn(createClient),
+        getAuthAdminClient: vi.fn(createClient),
         getUserClient: vi.fn(),
     };
 });

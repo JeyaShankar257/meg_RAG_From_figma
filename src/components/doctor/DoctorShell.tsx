@@ -128,99 +128,138 @@ export default function DoctorShell() {
 
         {/* Nav */}
         <nav className="flex-1 p-3 space-y-0.5 overflow-y-auto">
-          <NavLink
-            to="/doctor"
-            end
-            className={({ isActive }) =>
-              `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                isActive
-                  ? "bg-teal-50 text-teal-700"
-                  : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
-              }`
-            }
-          >
-            <HomeIcon />
-            Dashboard
-          </NavLink>
-
-          <div className="pt-2">
-            <p className="px-3 mb-1 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
-              Patients
-            </p>
-            {patientsLoading && (
-              <p className="px-3 py-2 text-[10px] text-slate-400">Loading…</p>
-            )}
-            {sidebarError && (
-              <div className="mx-2 my-1.5 p-2 rounded bg-rose-50 border border-rose-200 text-rose-700 text-xs">
-                <p className="font-semibold text-[11px]">Failed to load</p>
-                <button
-                  onClick={loadSidebarData}
-                  className="mt-1 text-[11px] underline font-medium text-rose-800 hover:text-rose-900 block"
-                >
-                  Retry
-                </button>
-              </div>
-            )}
-            {!patientsLoading && !sidebarError && patients.length === 0 && (
-              <p className="px-3 py-2 text-[10px] text-slate-400">
-                No assigned patients
+          {user?.mustChangePassword ? (
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800">
+              <p className="font-semibold mb-1">Password Change Required</p>
+              <p>
+                Please update your temporary password to access clinical
+                workspace functions.
               </p>
-            )}
-            {patients.map((p) => (
+            </div>
+          ) : (
+            <>
               <NavLink
-                key={p.id}
-                to={`/doctor/patients/${p.id}`}
+                to="/doctor"
+                end
                 className={({ isActive }) =>
-                  `flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors group ${
+                  `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
                     isActive
                       ? "bg-teal-50 text-teal-700"
                       : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
                   }`
                 }
               >
-                <div
-                  className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
-                    p.hasEscalation
-                      ? "bg-rose-500 animate-pulse-ring"
-                      : "bg-slate-300"
-                  }`}
-                />
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-xs font-medium">{p.name}</div>
-                  <div className="text-[10px] text-slate-400 font-mono">
-                    {p.patientId}
-                  </div>
-                </div>
+                <HomeIcon />
+                Dashboard
               </NavLink>
-            ))}
-          </div>
 
-          <div className="pt-2">
-            <NavLink
-              to="/doctor/patients/new"
-              className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-teal-600 hover:bg-teal-50 transition-colors"
-            >
-              <span className="text-lg leading-none">+</span>
-              Add New Patient
-            </NavLink>
-          </div>
+              <div className="pt-2">
+                <p className="px-3 mb-1 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+                  Patients
+                </p>
+                {patientsLoading && (
+                  <p className="px-3 py-2 text-[10px] text-slate-400">
+                    Loading…
+                  </p>
+                )}
+                {sidebarError && (
+                  <div className="mx-2 my-1.5 p-2 rounded bg-rose-50 border border-rose-200 text-rose-700 text-xs">
+                    <p className="font-semibold text-[11px]">Failed to load</p>
+                    <button
+                      onClick={loadSidebarData}
+                      className="mt-1 text-[11px] underline font-medium text-rose-800 hover:text-rose-900 block"
+                    >
+                      Retry
+                    </button>
+                  </div>
+                )}
+                {!patientsLoading && !sidebarError && patients.length === 0 && (
+                  <p className="px-3 py-2 text-[10px] text-slate-400">
+                    No assigned patients
+                  </p>
+                )}
+                {patients.map((p) => (
+                  <NavLink
+                    key={p.id}
+                    to={`/doctor/patients/${p.id}`}
+                    className={({ isActive }) =>
+                      `flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors group ${
+                        isActive
+                          ? "bg-teal-50 text-teal-700"
+                          : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                      }`
+                    }
+                  >
+                    <div
+                      className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
+                        p.hasEscalation
+                          ? "bg-rose-500 animate-pulse-ring"
+                          : "bg-slate-300"
+                      }`}
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-xs font-medium">
+                        {p.name}
+                      </div>
+                      <div className="text-[10px] text-slate-400 font-mono">
+                        {p.patientId}
+                      </div>
+                    </div>
+                  </NavLink>
+                ))}
+              </div>
+
+              <div className="pt-2">
+                <NavLink
+                  to="/doctor/patients/new"
+                  className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-teal-600 hover:bg-teal-50 transition-colors"
+                >
+                  <span className="text-lg leading-none">+</span>
+                  Add New Patient
+                </NavLink>
+              </div>
+
+              {user?.role === "admin" && (
+                <div className="pt-2">
+                  <p className="px-3 mb-1 text-[10px] font-semibold text-amber-600 uppercase tracking-wider">
+                    Administration
+                  </p>
+                  <NavLink
+                    to="/doctor/admin/accounts"
+                    className={({ isActive }) =>
+                      `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                        isActive
+                          ? "bg-amber-50 text-amber-800"
+                          : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                      }`
+                    }
+                  >
+                    <ShieldCheckIcon />
+                    Doctor Accounts
+                  </NavLink>
+                </div>
+              )}
+            </>
+          )}
         </nav>
 
         {/* Bottom */}
         <div className="p-3 border-t border-slate-100 space-y-0.5">
-          <NavLink
-            to="/doctor/settings"
-            className={({ isActive }) =>
-              `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                isActive
-                  ? "bg-teal-50 text-teal-700"
-                  : "text-slate-600 hover:bg-slate-50"
-              }`
-            }
-          >
-            <SettingsIcon />
-            Settings
-          </NavLink>
+          {!user?.mustChangePassword && (
+            <NavLink
+              to="/doctor/settings"
+              className={({ isActive }) =>
+                `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                  isActive
+                    ? "bg-teal-50 text-teal-700"
+                    : "text-slate-600 hover:bg-slate-50"
+                }`
+              }
+            >
+              <SettingsIcon />
+              Settings
+            </NavLink>
+          )}
           <button
             onClick={() => void signOut().then(() => navigate("/"))}
             className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-colors cursor-pointer"
@@ -236,10 +275,10 @@ export default function DoctorShell() {
         {/* Top bar */}
         <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-6 flex-shrink-0">
           <div className="flex items-center gap-2 text-sm text-slate-500">
-            <span className="text-slate-400">Demo Workspace</span>
+            <span className="text-slate-400">Live Workspace</span>
             <span className="w-1 h-1 rounded-full bg-slate-300" />
             <span className="bg-amber-50 text-amber-600 border border-amber-200 text-xs px-2 py-0.5 rounded-full font-medium">
-              Demo Data
+              Supabase
             </span>
           </div>
           <div className="flex items-center gap-3">
@@ -361,6 +400,24 @@ function LogoutIcon() {
       <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
       <polyline points="16 17 21 12 16 7" />
       <line x1="21" y1="12" x2="9" y2="12" />
+    </svg>
+  )
+}
+
+function ShieldCheckIcon() {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+      <path d="m9 12 2 2 4-4" />
     </svg>
   )
 }

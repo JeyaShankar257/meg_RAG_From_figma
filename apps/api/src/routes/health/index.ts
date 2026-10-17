@@ -35,26 +35,39 @@ healthRouter.get("/live", (c) =>
     }),
 );
 
-healthRouter.get("/ready", (c) => {
-    let ready = true;
-    let mode = "demo";
+healthRouter.get("/diagnostics", (c) => {
     try {
         const config = getConfig();
-        ready = config.demoMode || Boolean(config.agentsServiceUrl);
-        mode = config.demoMode ? "demo" : "configured";
-    } catch {
-        // fallback
-    }
-
-    return c.json(
-        {
-            status: ready ? "ok" : "unavailable",
-            service: "mednova-api",
-            mode,
+        return c.json({
+            status: "ok",
+            service: config.serviceName,
+            contractVersion: config.contractVersion,
+            demoMode: config.demoMode,
+            diagnostics: {
+                supabaseUrlPresent: Boolean(config.supabaseUrl),
+                serviceRoleKeyPresent: Boolean(config.supabaseServiceRoleKey),
+                authAdminKeyPresent: Boolean(config.authAdminKey),
+                anonKeyPresent: Boolean(config.supabaseAnonKey),
+                apiOrigin: config.apiOrigin,
+                allowedActivationRedirects: config.allowedActivationRedirects,
+                agentsServiceConfigured: Boolean(config.agentsServiceUrl),
+                resendConfigured: Boolean(config.resendApiKey),
+                geminiConfigured: Boolean(config.geminiApiKey),
+            },
             timestamp: new Date().toISOString(),
-        },
-        ready ? 200 : 503,
-    );
+        });
+    } catch {
+        return c.json(
+            {
+                status: "degraded",
+                service: "mednova-api",
+                message: "Configuration not initialized",
+                timestamp: new Date().toISOString(),
+            },
+            503,
+        );
+    }
 });
 
 export { healthRouter };
+

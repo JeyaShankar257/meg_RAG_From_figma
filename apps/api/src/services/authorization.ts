@@ -5,6 +5,8 @@ export interface UserContext {
     workspaceId: string;
     role: UserRole;
     email: string;
+    mustChangePassword?: boolean;
+    patientId?: string;
 }
 
 export interface PatientContext {
