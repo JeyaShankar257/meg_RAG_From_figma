@@ -35,7 +35,7 @@ export default function AdminDashboard() {
   const [showInviteModal, setShowInviteModal] = useState(false)
   const [inviteFullName, setInviteFullName] = useState("")
   const [inviteEmail, setInviteEmail] = useState("")
-  const [useTempPassword, setUseTempPassword] = useState(false)
+  const [useTempPassword, setUseTempPassword] = useState(true)
   const [tempPassword, setTempPassword] = useState("")
   const [sendEmail, setSendEmail] = useState(true)
 
@@ -176,13 +176,14 @@ export default function AdminDashboard() {
         email: inviteEmail.trim(),
         temporaryPassword: useTempPassword ? tempPassword : undefined,
         sendInvitationEmail: sendEmail,
+        approvalStatus: "approved",
       })
-      setSuccessMessage(res.message || `Doctor invitation processed for ${inviteEmail.trim()}.`)
+      setSuccessMessage(res.message || `Doctor account created and approved for ${inviteEmail.trim()}.`)
       setShowInviteModal(false)
       setInviteFullName("")
       setInviteEmail("")
       setTempPassword("")
-      setUseTempPassword(false)
+      setUseTempPassword(true)
       await loadData()
     } catch (err: any) {
       setError(err?.message || "Failed to invite doctor.")
@@ -765,7 +766,7 @@ export default function AdminDashboard() {
               </div>
 
               <div className="p-3 rounded-lg bg-indigo-500/10 border border-indigo-500/20 text-xs text-indigo-300">
-                <strong>Practice Tip:</strong> Setting an initial password saves it to the Practice Credentials tab, confirms the email, and activates the doctor for immediate sign-in. If the email is already registered, it updates their password smoothly.
+                <strong>Auto-Approved for Immediate Login:</strong> Doctors created by an Administrator are automatically marked as <code>approved</code> in Supabase so they will never encounter an &ldquo;awaiting approval&rdquo; error. Setting a password saves it to the Practice Credentials tab for easy reference.
               </div>
 
               <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-800">

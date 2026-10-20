@@ -46,6 +46,7 @@ const doctorInvitationSchema = z.object({
   workspaceId: z.string().uuid().optional(),
   temporaryPassword: z.string().min(8).optional(),
   sendInvitationEmail: z.boolean().optional(),
+  approvalStatus: z.enum(["pending", "approved"]).optional(),
 })
 
 const temporaryPasswordSchema = z.object({
@@ -522,9 +523,12 @@ authRouter.post("/doctor-invitations", authMiddleware, async (c) => {
   }
 
   const config = getConfig()
+  const initialApprovalStatus =
+    body.approvalStatus || (body.temporaryPassword ? "approved" : "pending")
+
   const { data: invitation, error: invitationError } =
     await authAdmin.auth.admin.inviteUserByEmail(body.email, {
-      data: { role: "doctor", approval_status: "pending" },
+      data: { role: "doctor", approval_status: initialApprovalStatus },
       redirectTo: config.doctorActivationUrl,
     })
 
@@ -545,7 +549,7 @@ authRouter.post("/doctor-invitations", authMiddleware, async (c) => {
     p_role: "doctor",
     p_full_name: body.fullName,
     p_email: body.email,
-    p_approval_status: "pending",
+    p_approval_status: initialApprovalStatus,
     p_invited_by_profile_id: user.profileId,
   })
 
@@ -564,6 +568,17 @@ authRouter.post("/doctor-invitations", authMiddleware, async (c) => {
     )
   }
 
+  // Ensure approval status is strictly persisted in profiles
+  if (initialApprovalStatus === "approved") {
+    await admin
+      .from("profiles")
+      .update({
+        approval_status: "approved",
+        approved_at: new Date().toISOString(),
+      })
+      .eq("id", invitation.user.id)
+  }
+
   // If a temporary password was supplied during creation, set it now with email_confirm: true and save to practice_credentials
   if (body.temporaryPassword) {
     const { error: passwordError } = await authAdmin.auth.admin.updateUserById(
@@ -576,7 +591,11 @@ authRouter.post("/doctor-invitations", authMiddleware, async (c) => {
     if (!passwordError) {
       await admin
         .from("profiles")
-        .update({ must_change_password: true, approval_status: "approved" })
+        .update({
+          must_change_password: true,
+          approval_status: "approved",
+          approved_at: new Date().toISOString(),
+        })
         .eq("id", invitation.user.id)
 
       await admin.from("practice_credentials").upsert(
@@ -609,7 +628,9 @@ authRouter.post("/doctor-invitations", authMiddleware, async (c) => {
     {
       success: true,
       message:
-        "Doctor invitation sent. An administrator must approve the account before login.",
+        initialApprovalStatus === "approved"
+          ? "Doctor account created and approved for immediate login."
+          : "Doctor invitation sent. An administrator must approve the account before login.",
       user: {
         id: invitation.user.id,
         email: invitation.user.email ?? body.email,

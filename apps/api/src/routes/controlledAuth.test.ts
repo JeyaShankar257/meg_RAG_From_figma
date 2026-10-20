@@ -445,6 +445,31 @@ describe("Controlled Authentication Lifecycle (Tasks 2.1 - 2.8)", () => {
       expect(audit.outcome).toBe("success")
     })
 
+    it("automatically sets approval_status to approved when admin provisions doctor with password or approvalStatus approved", async () => {
+      const res = await app.request("/auth/doctor-invitations", {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer demo-token-admin",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          email: "dr.direct@mednova.clinic",
+          fullName: "Dr. Direct Auto-Approved",
+          workspaceId,
+          temporaryPassword: "MedNovaPassword123!",
+          approvalStatus: "approved",
+        }),
+      })
+      expect(res.status).toBe(201)
+      const resJson = (await res.json()) as any
+      expect(resJson.message).toContain("approved")
+      const profile = testStore.profiles.find(
+        (p) => p.email === "dr.direct@mednova.clinic",
+      )
+      expect(profile).toBeDefined()
+      expect(profile.approval_status).toBe("approved")
+    })
+
     it("allows admin to list doctor invitations", async () => {
       const res = await app.request("/auth/doctor-invitations", {
         headers: { Authorization: "Bearer demo-token-admin" },

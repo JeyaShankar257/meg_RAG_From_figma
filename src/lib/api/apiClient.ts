@@ -397,6 +397,7 @@ export const api = {
         fullName: string
         temporaryPassword?: string
         sendInvitationEmail?: boolean
+        approvalStatus?: "pending" | "approved"
       }) =>
         request<{
           success: boolean
