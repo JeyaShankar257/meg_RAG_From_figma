@@ -280,15 +280,30 @@ authRouter.post("/login", async (c) => {
     throw ApiError.unauthorized("Invalid email or password")
   }
 
-  const { data: profile, error: profError } = await admin
+  let { data: profile } = await admin
     .from("profiles")
     .select(
       "id, workspace_id, role, full_name, email, approval_status, must_change_password",
     )
     .eq("id", authData.user.id)
-    .single()
+    .maybeSingle()
 
-  if (profError || !profile) {
+  // Fallback: If not found by auth user UUID, lookup by authenticated email
+  if (!profile && email) {
+    const { data: profileByEmail } = await admin
+      .from("profiles")
+      .select(
+        "id, workspace_id, role, full_name, email, approval_status, must_change_password",
+      )
+      .eq("email", email)
+      .maybeSingle()
+
+    if (profileByEmail) {
+      profile = profileByEmail
+    }
+  }
+
+  if (!profile) {
     throw ApiError.unauthorized("Account profile not found")
   }
 
