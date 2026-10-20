@@ -50,6 +50,7 @@ export async function authMiddleware(c: Context, next: Next) {
                 workspaceId: profile?.workspace_id ?? "a0000000-0000-0000-0000-000000000001",
                 role: "patient",
                 email: "m.rivera@email.com",
+                patientId: "p-001",
             });
             c.set("accessToken", token);
             return next();

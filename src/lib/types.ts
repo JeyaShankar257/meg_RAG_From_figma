@@ -459,3 +459,81 @@ export interface RecoverableApiError {
   retryable: boolean;
   details?: Array<{ path: string; message: string }>;
 }
+
+// ─── Patient Portal Types ───────────────────────────────────────────────────
+
+export type PatientDoseStatus = "scheduled" | "taken" | "missed" | "late" | "skipped";
+
+export interface PatientDailyDoseSchedule {
+  id: string; // UUID schedule ID
+  patientId: string;
+  prescriptionId: string;
+  medicationName: string;
+  dosage: string;
+  scheduledTime: string;
+  scheduledAt: string;
+  windowMinutes: number;
+  status: PatientDoseStatus;
+  loggedAt?: string | null;
+  reason?: string | null;
+}
+
+export interface PatientAdherenceSummary {
+  patientId: string;
+  score: number;
+  takenPercentage: number;
+  latePercentage: number;
+  missedPercentage: number;
+  skippedPercentage: number;
+  takenCount: number;
+  lateCount: number;
+  missedCount: number;
+  skippedCount: number;
+  currentStreakDays: number;
+  trend: "up" | "down" | "stable";
+  calculatedAt: string;
+  logs: Array<{
+    id?: string;
+    scheduleId?: string;
+    patientId?: string;
+    status: "pending" | "taken" | "late" | "missed" | "skipped";
+    method?: string;
+    reason?: string;
+    idempotencyKey?: string;
+    loggedAt?: string;
+  }>;
+}
+
+export interface TransparencyTrustSignal {
+  category: string;
+  label: string;
+  status: "verified" | "active" | "monitored";
+  description: string;
+  lastVerifiedAt: string;
+}
+
+export interface TransparencyAuditSummary {
+  id: string;
+  action: string;
+  actorRole: string;
+  description: string;
+  occurredAt: string;
+}
+
+export interface PatientTransparencyResponse {
+  patientId: string;
+  consent: {
+    id?: string;
+    patientId?: string;
+    shareWithCareTeam?: boolean;
+    allowReminders?: boolean;
+    allowAiAnalysis?: boolean;
+    updatedByProfileId?: string;
+    updatedAt?: string;
+  } | null;
+  trustSignals: TransparencyTrustSignal[];
+  recentAudits: TransparencyAuditSummary[];
+  assuranceScore: number;
+  freshnessTimestamp: string;
+  correlationId: string;
+}

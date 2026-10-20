@@ -1,0 +1,55 @@
+{
+  "description": "Contract fixture: valid patient transparency and trust assurance response",
+  "patientId": "p-001",
+  "consent": {
+    "id": "consent-001",
+    "patientId": "p-001",
+    "shareWithCareTeam": true,
+    "allowReminders": true,
+    "allowAiAnalysis": false,
+    "updatedByProfileId": "prof-001",
+    "updatedAt": "2026-10-15T12:00:00.000Z"
+  },
+  "trustSignals": [
+    {
+      "category": "Consent Enforcement",
+      "label": "Care Team Access",
+      "status": "verified",
+      "description": "Only authorized clinicians assigned to your care team may access your medical history.",
+      "lastVerifiedAt": "2026-10-17T20:00:00.000Z"
+    },
+    {
+      "category": "AI Advisory",
+      "label": "AI Analysis Consent",
+      "status": "active",
+      "description": "Diagnostic and pattern analysis algorithms only run when explicitly permitted by you.",
+      "lastVerifiedAt": "2026-10-17T20:00:00.000Z"
+    },
+    {
+      "category": "Audit Trail",
+      "label": "Immutable Audit Logging",
+      "status": "monitored",
+      "description": "Every access, update, and dose recorded is permanently logged for clinical integrity.",
+      "lastVerifiedAt": "2026-10-17T20:00:00.000Z"
+    }
+  ],
+  "recentAudits": [
+    {
+      "id": "aud-001",
+      "action": "dose.log",
+      "actorRole": "patient",
+      "description": "Dose confirmed taken for Metformin 1000mg",
+      "occurredAt": "2026-10-17T08:04:12.000Z"
+    },
+    {
+      "id": "aud-002",
+      "action": "consent.update",
+      "actorRole": "patient",
+      "description": "Consent preferences updated",
+      "occurredAt": "2026-10-15T12:00:00.000Z"
+    }
+  ],
+  "assuranceScore": 98,
+  "freshnessTimestamp": "2026-10-17T20:00:00.000Z",
+  "correlationId": "corr-transparency-fixture-001"
+}

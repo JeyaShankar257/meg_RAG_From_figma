@@ -153,5 +153,92 @@ export const agentResultSchema = z.object({
     completedAt: z.string().datetime({ offset: true }),
 });
 
+// ─── Patient Portal Contracts & Schemas ─────────────────────────────────────
+
+export const patientDailyDoseScheduleSchema = z.object({
+    id: z.string().uuid(),
+    patientId: z.string().min(1),
+    prescriptionId: z.string().min(1),
+    medicationName: z.string().min(1),
+    dosage: z.string(),
+    scheduledTime: z.string(),
+    scheduledAt: z.string(),
+    windowMinutes: z.number().int().nonnegative(),
+    status: z.enum(["scheduled", "taken", "missed", "late", "skipped"]),
+    loggedAt: z.string().nullable().optional(),
+    reason: z.string().nullable().optional(),
+});
+
+export const patientDoseSchedulesResponseSchema = z.object({
+    patientId: z.string().min(1),
+    date: z.string(),
+    schedules: z.array(patientDailyDoseScheduleSchema),
+    correlationId: z.string(),
+});
+
+export const doseLogSchema = z.object({
+    id: z.string(),
+    scheduleId: z.string(),
+    patientId: z.string(),
+    status: z.enum(["pending", "taken", "late", "missed", "skipped"]),
+    method: z.enum(["oral", "injection", "patch", "other"]).optional(),
+    reason: z.string().optional(),
+    idempotencyKey: z.string(),
+    loggedAt: z.string(),
+});
+
+export const patientAdherenceSummarySchema = z.object({
+    patientId: z.string().min(1),
+    score: z.number().min(0).max(100),
+    takenPercentage: z.number().min(0).max(100),
+    latePercentage: z.number().min(0).max(100),
+    missedPercentage: z.number().min(0).max(100),
+    skippedPercentage: z.number().min(0).max(100),
+    takenCount: z.number().int().nonnegative(),
+    lateCount: z.number().int().nonnegative(),
+    missedCount: z.number().int().nonnegative(),
+    skippedCount: z.number().int().nonnegative(),
+    currentStreakDays: z.number().int().nonnegative(),
+    trend: z.enum(["up", "down", "stable"]),
+    calculatedAt: z.string(),
+    logs: z.array(doseLogSchema),
+});
+
+export const transparencyTrustSignalSchema = z.object({
+    category: z.string(),
+    label: z.string(),
+    status: z.enum(["verified", "active", "monitored"]),
+    description: z.string(),
+    lastVerifiedAt: z.string(),
+});
+
+export const transparencyAuditSummarySchema = z.object({
+    id: z.string(),
+    action: z.string(),
+    actorRole: z.string(),
+    description: z.string(),
+    occurredAt: z.string(),
+});
+
+export const patientTransparencyResponseSchema = z.object({
+    patientId: z.string().min(1),
+    consent: z
+        .object({
+            id: z.string(),
+            patientId: z.string(),
+            shareWithCareTeam: z.boolean(),
+            allowReminders: z.boolean(),
+            allowAiAnalysis: z.boolean(),
+            updatedByProfileId: z.string(),
+            updatedAt: z.string(),
+        })
+        .nullable(),
+    trustSignals: z.array(transparencyTrustSignalSchema),
+    recentAudits: z.array(transparencyAuditSummarySchema),
+    assuranceScore: z.number().min(0).max(100),
+    freshnessTimestamp: z.string(),
+    correlationId: z.string(),
+});
+
 export * from "./pipeline-stages.js";
 

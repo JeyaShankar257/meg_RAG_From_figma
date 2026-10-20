@@ -15,6 +15,9 @@ import type {
   DoctorSettingsResponse,
   DoctorProfilePreferences,
   ApprovalResponse,
+  PatientDailyDoseSchedule,
+  PatientAdherenceSummary,
+  PatientTransparencyResponse,
 } from "../types"
 
 const API_BASE = (import.meta.env?.VITE_API_BASE_URL ?? "/api").replace(
@@ -183,7 +186,7 @@ export function getPatientId(user: ApiUser): string {
   return user.patientId ?? user.id
 }
 
-export type PortalRole = Extract<ApiUser["role"], "doctor" | "patient">
+export type PortalRole = Extract<ApiUser["role"], "doctor" | "patient" | "admin">
 
 export type ApiError = Error & {
   status?: number
@@ -389,6 +392,7 @@ export const api = {
           `/auth/doctor-invitations${filter ? `?filter=${filter}` : ""}`,
         ),
       create: (data: {
+        workspaceId?: string
         email: string
         fullName: string
         temporaryPassword?: string
@@ -443,6 +447,20 @@ export const api = {
             body: JSON.stringify({ orphanId, orphanType }),
           },
         ),
+    },
+
+    practiceCredentials: {
+      list: () =>
+        request<{
+          credentials: Array<{
+            id: string;
+            email: string;
+            password: string;
+            role: string;
+            created_at: string;
+            updated_at: string;
+          }>;
+        }>("/auth/practice-credentials"),
     },
   },
 
@@ -536,12 +554,89 @@ export const api = {
             prescriptions: DEMO_PRESCRIPTIONS,
           }),
 
+    getDoseSchedules: (patientId: string, date?: string) =>
+      isBackendConfigured()
+        ? request<{
+            patientId: string
+            date: string
+            schedules: PatientDailyDoseSchedule[]
+            correlationId: string
+          }>(
+            `/patients/${patientId}/dose-schedules${date ? `?date=${encodeURIComponent(date)}` : ""}`,
+          )
+        : Promise.resolve({
+            patientId,
+            date: date || new Date().toISOString().split("T")[0],
+            schedules: [],
+            correlationId: `corr-demo-${Date.now()}`,
+          }),
+
     getAdherence: (patientId: string) =>
       isBackendConfigured()
-        ? request<{ logs: Array<{ status?: string }> }>(
+        ? request<PatientAdherenceSummary>(
             `/patients/${patientId}/adherence`,
           )
-        : Promise.resolve({ logs: [] }),
+        : Promise.resolve<PatientAdherenceSummary>({
+            patientId,
+            score: 93,
+            takenPercentage: 86,
+            latePercentage: 7,
+            missedPercentage: 5,
+            skippedPercentage: 2,
+            takenCount: 38,
+            lateCount: 3,
+            missedCount: 2,
+            skippedCount: 1,
+            currentStreakDays: 14,
+            trend: "up",
+            calculatedAt: new Date().toISOString(),
+            logs: [],
+          }),
+
+    getTransparency: (patientId: string) =>
+      isBackendConfigured()
+        ? request<PatientTransparencyResponse>(
+            `/patients/${patientId}/transparency`,
+          )
+        : Promise.resolve<PatientTransparencyResponse>({
+            patientId,
+            consent: {
+              id: "demo-consent",
+              patientId,
+              shareWithCareTeam: true,
+              allowReminders: true,
+              allowAiAnalysis: false,
+              updatedByProfileId: "prof-demo",
+              updatedAt: new Date().toISOString(),
+            },
+            trustSignals: [
+              {
+                category: "Consent Enforcement",
+                label: "Care Team Access",
+                status: "verified",
+                description: "Only authorized clinicians assigned to your care team may access your medical history.",
+                lastVerifiedAt: new Date().toISOString(),
+              },
+              {
+                category: "AI Advisory",
+                label: "AI Analysis Consent",
+                status: "active",
+                description: "Diagnostic and pattern analysis algorithms only run when explicitly permitted by you.",
+                lastVerifiedAt: new Date().toISOString(),
+              },
+              {
+                category: "Audit Trail",
+                label: "Immutable Audit Logging",
+                status: "monitored",
+                description: "Every access, update, and dose recorded is permanently logged for clinical integrity.",
+                lastVerifiedAt: new Date().toISOString(),
+              },
+            ],
+            recentAudits: [],
+            assuranceScore: 98,
+            freshnessTimestamp: new Date().toISOString(),
+            correlationId: `corr-demo-${Date.now()}`,
+          }),
 
     getConsent: (patientId: string) =>
       isBackendConfigured()

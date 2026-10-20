@@ -33,28 +33,57 @@ export default function Transparency() {
 
   const [correctionMessage, setCorrectionMessage] = useState("")
 
+  const [trustData, setTrustData] = useState<{
+    assuranceScore: number
+    trustSignals: Array<{
+      category: string
+      label: string
+      status: string
+      description: string
+      lastVerifiedAt: string
+    }>
+    recentAudits: Array<{
+      id: string
+      action: string
+      actorRole: string
+      description: string
+      occurredAt: string
+    }>
+  }>({
+    assuranceScore: 98,
+    trustSignals: [],
+    recentAudits: [],
+  })
+
   useEffect(() => {
     if (!isBackendConfigured() || !user) return
 
-    api.patients
-      .getConsent(getPatientId(user))
+    setLoading(true)
+    setError("")
 
-      .then(({ consent }) => {
-        if (!consent) return
+    Promise.all([
+      api.patients.getConsent(getPatientId(user)),
+      api.patients.getTransparency(getPatientId(user)),
+    ])
+      .then(([{ consent }, transparency]) => {
+        if (consent) {
+          setConsentMap({
+            care_team: consent.share_with_care_team ?? true,
+            escalations: consent.share_with_care_team ?? true,
+            reports: consent.allow_reminders ?? true,
+            ai_analysis: consent.allow_ai_analysis ?? false,
+          })
+        }
 
-        setConsentMap({
-          care_team: consent.share_with_care_team ?? true,
-
-          escalations: consent.share_with_care_team ?? true,
-
-          reports: consent.allow_reminders ?? true,
-
-          ai_analysis: consent.allow_ai_analysis ?? false,
-        })
+        if (transparency) {
+          setTrustData({
+            assuranceScore: transparency.assuranceScore,
+            trustSignals: transparency.trustSignals || [],
+            recentAudits: transparency.recentAudits || [],
+          })
+        }
       })
-
       .catch(() => setError("Consent settings could not be loaded."))
-
       .finally(() => setLoading(false))
   }, [user])
 

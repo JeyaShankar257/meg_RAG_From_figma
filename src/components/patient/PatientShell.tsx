@@ -1,6 +1,7 @@
 import { NavLink, Outlet, useNavigate } from "react-router-dom"
 
 import { useSession } from "../../lib/auth/SessionProvider"
+import { isBackendConfigured } from "../../lib/api/apiClient"
 
 const navItems = [
   { to: "/patient", label: "Home", icon: HomeIcon, end: true },
@@ -23,6 +24,13 @@ export default function PatientShell() {
   const navigate = useNavigate()
 
   const { user, signOut } = useSession()
+
+  const initials = (user?.fullName || user?.email || "PT")
+    .split(/[\s.@_-]+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((s) => s[0].toUpperCase())
+    .join("")
 
   return (
     <div className="flex h-screen bg-slate-50 overflow-hidden flex-col">
@@ -47,12 +55,14 @@ export default function PatientShell() {
           </div>
         </div>
         <div className="flex items-center gap-3">
-          <span className="bg-amber-50 text-amber-600 border border-amber-200 text-xs px-2 py-0.5 rounded-full font-medium">
-            Demo
-          </span>
+          {!isBackendConfigured() && (
+            <span className="bg-amber-50 text-amber-600 border border-amber-200 text-xs px-2 py-0.5 rounded-full font-medium">
+              Demo
+            </span>
+          )}
           <div className="flex items-center gap-2">
             <div className="w-7 h-7 rounded-full bg-teal-600 flex items-center justify-center text-white text-xs font-bold">
-              MR
+              {initials || "PT"}
             </div>
             <span className="text-sm font-medium text-slate-700 hidden sm:block">
               {user?.fullName ?? user?.email}

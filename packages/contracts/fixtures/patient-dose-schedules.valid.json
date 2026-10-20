@@ -1,0 +1,47 @@
+{
+  "description": "Contract fixture: valid patient daily dose schedules response",
+  "patientId": "p-001",
+  "date": "2026-10-17",
+  "schedules": [
+    {
+      "id": "e0a6d51c-4b36-4191-88f5-9304e7cf4a91",
+      "patientId": "p-001",
+      "prescriptionId": "rx-001",
+      "medicationName": "Metformin",
+      "dosage": "1000mg",
+      "scheduledTime": "08:00 AM",
+      "scheduledAt": "2026-10-17T08:00:00.000Z",
+      "windowMinutes": 60,
+      "status": "taken",
+      "loggedAt": "2026-10-17T08:04:12.000Z",
+      "reason": null
+    },
+    {
+      "id": "9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d",
+      "patientId": "p-001",
+      "prescriptionId": "rx-002",
+      "medicationName": "Amlodipine",
+      "dosage": "5mg",
+      "scheduledTime": "08:00 AM",
+      "scheduledAt": "2026-10-17T08:00:00.000Z",
+      "windowMinutes": 60,
+      "status": "taken",
+      "loggedAt": "2026-10-17T08:04:12.000Z",
+      "reason": null
+    },
+    {
+      "id": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+      "patientId": "p-001",
+      "prescriptionId": "rx-001",
+      "medicationName": "Metformin",
+      "dosage": "1000mg",
+      "scheduledTime": "07:00 PM",
+      "scheduledAt": "2026-10-17T19:00:00.000Z",
+      "windowMinutes": 60,
+      "status": "scheduled",
+      "loggedAt": null,
+      "reason": null
+    }
+  ],
+  "correlationId": "corr-schedule-fixture-001"
+}

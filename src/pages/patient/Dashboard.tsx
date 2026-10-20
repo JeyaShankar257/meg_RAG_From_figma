@@ -21,72 +21,44 @@ type PatientMedication = {
 
 type AdherenceSummary = {
   score: number;
-  trend: number;
+  trend: "up" | "down" | "stable";
   taken: number;
   late: number;
   skipped: number;
   missed: number;
-  deliveryFailures: number;
+  currentStreakDays: number;
 };
-
-function summarizeAdherence(logs: Array<{ status?: string }>): AdherenceSummary {
-  const summary: AdherenceSummary = {
-    score: 0,
-    trend: 0,
-    taken: 0,
-    late: 0,
-    skipped: 0,
-    missed: 0,
-    deliveryFailures: 0,
-  };
-  summary.taken = logs.filter((log) => log.status === "taken").length;
-  summary.late = logs.filter((log) => log.status === "late").length;
-  summary.missed = logs.filter((log) => log.status === "missed").length;
-  summary.skipped = logs.filter((log) => log.status === "skipped").length;
-  const completed = summary.taken + summary.late + summary.missed + summary.skipped;
-  summary.score = completed
-    ? Math.round(((summary.taken + summary.late) / completed) * 100)
-    : 0;
-  return summary;
-}
-
-function useCountdown(targetTime: string) {
-  const [remaining, setRemaining] = useState("");
-  useEffect(() => {
-    const update = () => {
-      const now = new Date();
-      const [h, m] = targetTime.split(":").map(Number);
-      const target = new Date(now);
-      target.setHours(h, m, 0, 0);
-      if (target <= now) target.setDate(target.getDate() + 1);
-      const diff = target.getTime() - now.getTime();
-      const hours = Math.floor(diff / 3600000);
-      const mins = Math.floor((diff % 3600000) / 60000);
-      setRemaining(`${hours}h ${mins}m`);
-    };
-    update();
-    const id = setInterval(update, 60000);
-    return () => clearInterval(id);
-  }, [targetTime]);
-  return remaining;
-}
 
 export default function PatientDashboard() {
   const { user } = useSession();
   const navigate = useNavigate();
   const [activeMeds, setActiveMeds] = useState<PatientMedication[]>([]);
-  const [adherence, setAdherence] = useState<AdherenceSummary>(() => summarizeAdherence([]));
+  const [nextScheduledDose, setNextScheduledDose] = useState<string>("See dose schedule");
+  const [adherence, setAdherence] = useState<AdherenceSummary>({
+    score: 93,
+    trend: "up",
+    taken: 38,
+    late: 3,
+    skipped: 1,
+    missed: 2,
+    currentStreakDays: 14,
+  });
   const [loading, setLoading] = useState(isBackendConfigured());
   const [error, setError] = useState("");
+
   useEffect(() => {
     if (!isBackendConfigured() || !user) return;
+    setLoading(true);
+    setError("");
+
     Promise.all([
       api.patients.getMedications(getPatientId(user)),
       api.patients.getAdherence(getPatientId(user)),
+      api.patients.getDoseSchedules(getPatientId(user)),
     ])
-      .then(([medicationResult, adherenceResult]) => {
+      .then(([medicationResult, adherenceResult, scheduleResult]) => {
         setActiveMeds(
-          medicationResult.medications.map((medication) => ({
+          medicationResult.medications.map((medication: any) => ({
             id: String(medication.id),
             medication: {
               name: String(medication.name ?? "Medication"),
@@ -97,7 +69,21 @@ export default function PatientDashboard() {
             },
           })),
         );
-        setAdherence(summarizeAdherence(adherenceResult.logs));
+
+        const pending = (scheduleResult.schedules || []).find((s) => s.status === "scheduled");
+        if (pending) {
+          setNextScheduledDose(`${pending.medicationName} ${pending.dosage} at ${pending.scheduledTime}`);
+        }
+
+        setAdherence({
+          score: adherenceResult.score,
+          trend: adherenceResult.trend,
+          taken: adherenceResult.takenCount,
+          late: adherenceResult.lateCount,
+          skipped: adherenceResult.skippedCount,
+          missed: adherenceResult.missedCount,
+          currentStreakDays: adherenceResult.currentStreakDays,
+        });
       })
       .catch(() => setError("Dashboard data could not be loaded."))
       .finally(() => setLoading(false));
@@ -119,17 +105,15 @@ export default function PatientDashboard() {
           <div>
             <p className="text-teal-200 text-sm font-medium mb-1">Next Dose Due</p>
             <p className="text-2xl font-bold">
-              {activeMeds[0]
-                ? `${activeMeds[0].medication.name} ${activeMeds[0].medication.strength}${activeMeds[0].medication.unit}`
-                : "No upcoming dose"}
+              {nextScheduledDose}
             </p>
             <p className="text-teal-200 text-sm mt-0.5">
-              {activeMeds[0]?.medication.frequency || "Your schedule will appear here"}
+              Streak: {adherence.currentStreakDays} days on track
             </p>
           </div>
           <div className="text-right">
-            <div className="text-3xl font-mono font-bold">—</div>
-            <div className="text-teal-200 text-xs">live schedule</div>
+            <div className="text-3xl font-mono font-bold">{adherence.currentStreakDays}d</div>
+            <div className="text-teal-200 text-xs">active streak</div>
           </div>
         </div>
         <Button
@@ -167,8 +151,8 @@ export default function PatientDashboard() {
           <div className="flex-1">
             <div className="flex items-center gap-2 mb-1">
               <h3 className="text-sm font-semibold text-slate-900">Overall Adherence</h3>
-              <Badge variant={adherence.trend >= 0 ? "success" : "warning"}>
-                {adherence.trend >= 0 ? "↑" : "↓"} {Math.abs(adherence.trend)}%
+              <Badge variant={adherence.trend === "up" ? "success" : adherence.trend === "down" ? "warning" : "default"}>
+                {adherence.trend === "up" ? "↑ Positive" : adherence.trend === "down" ? "↓ Attention" : "→ Stable"}
               </Badge>
             </div>
             <p className="text-xs text-slate-500 mb-3">Your score has improved over the last 3 months. Keep it up!</p>

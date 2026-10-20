@@ -95,6 +95,61 @@ if (demoMode) {
   if (consentResponse.status === 401 || consentResponse.status === 403)
     throw new Error("Patient consent workflow is not authorized")
 
+  const doseSchedulesResponse = await fetch(
+    `${apiUrl}/patients/${patientId}/dose-schedules`,
+    {
+      headers: { Authorization: `Bearer ${patientToken}` },
+    },
+  )
+  if (
+    doseSchedulesResponse.status === 401 ||
+    doseSchedulesResponse.status === 403
+  )
+    throw new Error("Patient dose schedules workflow is not authorized")
+
+  const adherenceResponse = await fetch(
+    `${apiUrl}/patients/${patientId}/adherence`,
+    {
+      headers: { Authorization: `Bearer ${patientToken}` },
+    },
+  )
+  if (adherenceResponse.status === 401 || adherenceResponse.status === 403)
+    throw new Error("Patient adherence workflow is not authorized")
+
+  const transparencyResponse = await fetch(
+    `${apiUrl}/patients/${patientId}/transparency`,
+    {
+      headers: { Authorization: `Bearer ${patientToken}` },
+    },
+  )
+  if (
+    transparencyResponse.status === 401 ||
+    transparencyResponse.status === 403
+  )
+    throw new Error("Patient transparency workflow is not authorized")
+
+  const patientSettingsResponse = await fetch(
+    `${apiUrl}/patients/${patientId}/settings`,
+    {
+      headers: { Authorization: `Bearer ${patientToken}` },
+    },
+  )
+  if (
+    patientSettingsResponse.status === 401 ||
+    patientSettingsResponse.status === 403
+  )
+    throw new Error("Patient settings workflow is not authorized")
+
+  // Verify patient cross-boundary isolation (patient p-001 cannot access p-002)
+  const crossPatientResponse = await fetch(
+    `${apiUrl}/patients/p-002/dose-schedules`,
+    {
+      headers: { Authorization: `Bearer ${patientToken}` },
+    },
+  )
+  if (crossPatientResponse.status !== 403)
+    throw new Error("Cross-patient isolation check did not return 403")
+
   const correctionResponse = await fetch(`${apiUrl}/corrections`, {
     method: "POST",
     headers: {
@@ -143,7 +198,7 @@ if (demoMode) {
     throw new Error("Unassigned patient pipeline did not return 404")
 
   console.log(
-    "Verified doctor login, dashboard, settings, durable pipeline, patient activation/session, protected patient reads, consent, and correction workflow boundaries.",
+    "Verified doctor login, dashboard, settings, durable pipeline, patient activation/session, protected patient reads, dose schedules, adherence, transparency, settings, and boundary enforcement.",
   )
 }
 

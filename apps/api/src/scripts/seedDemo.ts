@@ -362,6 +362,175 @@ async function runSeed() {
         },
     ]);
 
+    // 10b. Dose Schedules & Logs for Patient Portal
+    const now = new Date();
+    const today = now.toISOString().split("T")[0];
+    const sched1Id = "e0a6d51c-4b36-4191-88f5-9304e7cf4a91";
+    const sched2Id = "9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d";
+
+    const pastSchedules = [];
+    const pastLogs = [];
+    for (let i = 1; i <= 6; i++) {
+        const d = new Date(now.getTime() - i * 86400000);
+        const dateStr = d.toISOString().split("T")[0];
+        const sMorningId = `e0a6d51c-4b36-4191-88f5-9304e7cf4a0${i}`;
+        const sEveningId = `9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb0${i}`;
+        pastSchedules.push(
+            {
+                id: sMorningId,
+                prescription_id: rxApprovedId,
+                patient_id: "p-001",
+                scheduled_at: `${dateStr}T08:00:00.000Z`,
+                window_minutes: 60,
+            },
+            {
+                id: sEveningId,
+                prescription_id: rxApprovedId,
+                patient_id: "p-001",
+                scheduled_at: `${dateStr}T19:00:00.000Z`,
+                window_minutes: 60,
+            },
+        );
+        pastLogs.push(
+            {
+                id: `f1a6d51c-4b36-4191-88f5-9304e7cf4a0${i}`,
+                schedule_id: sMorningId,
+                patient_id: "p-001",
+                status: "taken",
+                method: "oral",
+                idempotency_key: `idemp-demo-seed-dose-past-m-${i}`,
+                logged_at: `${dateStr}T08:10:00.000Z`,
+            },
+            {
+                id: `f2a6d51c-4b36-4191-88f5-9304e7cf4a0${i}`,
+                schedule_id: sEveningId,
+                patient_id: "p-001",
+                status: "taken",
+                method: "oral",
+                idempotency_key: `idemp-demo-seed-dose-past-e-${i}`,
+                logged_at: `${dateStr}T19:15:00.000Z`,
+            },
+        );
+    }
+
+    await supabase.from("dose_schedules").upsert([
+        ...pastSchedules,
+        {
+            id: sched1Id,
+            prescription_id: rxApprovedId,
+            patient_id: "p-001",
+            scheduled_at: `${today}T08:00:00.000Z`,
+            window_minutes: 60,
+        },
+        {
+            id: sched2Id,
+            prescription_id: rxApprovedId,
+            patient_id: "p-001",
+            scheduled_at: `${today}T19:00:00.000Z`,
+            window_minutes: 60,
+        },
+    ]);
+
+    await supabase.from("dose_logs").upsert([
+        ...pastLogs,
+        {
+            id: "f1a6d51c-4b36-4191-88f5-9304e7cf4a92",
+            schedule_id: sched1Id,
+            patient_id: "p-001",
+            status: "taken",
+            method: "oral",
+            idempotency_key: "idemp-demo-seed-dose-001",
+            logged_at: `${today}T08:05:00.000Z`,
+        },
+    ]);
+
+    // 10c. Consent & Notification Preferences for Patients
+    await supabase.from("consent_records").upsert([
+        {
+            patient_id: "p-001",
+            share_with_care_team: true,
+            allow_reminders: true,
+            allow_ai_analysis: true,
+            updated_by_profile_id: patient1ProfileId,
+            updated_at: new Date(Date.now() - 86400000 * 5).toISOString(),
+        },
+        {
+            patient_id: "p-002",
+            share_with_care_team: true,
+            allow_reminders: true,
+            allow_ai_analysis: false,
+            updated_by_profile_id: patient2ProfileId,
+            updated_at: new Date(Date.now() - 86400000 * 2).toISOString(),
+        },
+        {
+            patient_id: "p-003",
+            share_with_care_team: false,
+            allow_reminders: true,
+            allow_ai_analysis: false,
+            updated_by_profile_id: patient3ProfileId,
+            updated_at: new Date(Date.now() - 86400000 * 10).toISOString(),
+        },
+    ]);
+
+    await supabase.from("notification_preferences").upsert([
+        {
+            patient_id: "p-001",
+            channel: "email",
+            enabled: true,
+            quiet_hours_start: "22:00:00",
+            quiet_hours_end: "07:00:00",
+            updated_at: new Date().toISOString(),
+        },
+        {
+            patient_id: "p-001",
+            channel: "sms",
+            enabled: true,
+            quiet_hours_start: "22:00:00",
+            quiet_hours_end: "07:00:00",
+            updated_at: new Date().toISOString(),
+        },
+        {
+            patient_id: "p-001",
+            channel: "push",
+            enabled: true,
+            updated_at: new Date().toISOString(),
+        },
+    ]);
+
+    // 10d. Patient Specific Audit Records
+    await supabase.from("audit_events").insert([
+        {
+            workspace_id: workspaceId,
+            actor_profile_id: patient1ProfileId,
+            action: "login",
+            target_type: "patient",
+            target_id: "p-001",
+            correlation_id: "demo-patient-audit-login",
+            outcome: "success",
+            occurred_at: new Date(Date.now() - 3600000 * 5).toISOString(),
+        },
+        {
+            workspace_id: workspaceId,
+            actor_profile_id: patient1ProfileId,
+            action: "log_dose",
+            target_type: "dose_log",
+            target_id: "f1a6d51c-4b36-4191-88f5-9304e7cf4a92",
+            correlation_id: "demo-patient-audit-dose",
+            outcome: "success",
+            occurred_at: `${today}T08:05:00.000Z`,
+        },
+        {
+            workspace_id: workspaceId,
+            actor_profile_id: patient1ProfileId,
+            action: "update_consent",
+            target_type: "consent",
+            target_id: "p-001",
+            correlation_id: "demo-patient-audit-consent",
+            outcome: "success",
+            occurred_at: new Date(Date.now() - 86400000 * 5).toISOString(),
+        },
+    ]);
+
     // 11. Pipeline Runs (Durable multi-stage workflows)
     const run1Id = "40000000-0000-0000-0000-000000000001";
     const run2Id = "40000000-0000-0000-0000-000000000002";

@@ -650,3 +650,64 @@ export interface RagAnalysisResponse {
     updatedAt?: string;
 }
 
+// ─── Patient Portal Types ───────────────────────────────────────────────────
+
+export type PatientDoseStatus = "scheduled" | "taken" | "missed" | "late" | "skipped";
+
+export interface PatientDailyDoseSchedule {
+    id: string; // UUID schedule ID
+    patientId: string;
+    prescriptionId: string;
+    medicationName: string;
+    dosage: string;
+    scheduledTime: string; // e.g. "08:00 AM" or ISO string
+    scheduledAt: string; // ISO datetime
+    windowMinutes: number;
+    status: PatientDoseStatus;
+    loggedAt?: string | null;
+    reason?: string | null;
+}
+
+export interface PatientAdherenceSummary {
+    patientId: string;
+    score: number; // overall percentage (0-100)
+    takenPercentage: number;
+    latePercentage: number;
+    missedPercentage: number;
+    skippedPercentage: number;
+    takenCount: number;
+    lateCount: number;
+    missedCount: number;
+    skippedCount: number;
+    currentStreakDays: number;
+    trend: "up" | "down" | "stable";
+    calculatedAt: string;
+    logs: DoseLog[];
+}
+
+export interface TransparencyTrustSignal {
+    category: string;
+    label: string;
+    status: "verified" | "active" | "monitored";
+    description: string;
+    lastVerifiedAt: string;
+}
+
+export interface TransparencyAuditSummary {
+    id: string;
+    action: string;
+    actorRole: string;
+    description: string;
+    occurredAt: string;
+}
+
+export interface PatientTransparencyResponse {
+    patientId: string;
+    consent: ConsentRecord | null;
+    trustSignals: TransparencyTrustSignal[];
+    recentAudits: TransparencyAuditSummary[];
+    assuranceScore: number;
+    freshnessTimestamp: string;
+    correlationId: string;
+}
+

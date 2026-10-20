@@ -97,40 +97,31 @@ export default function DoseCenter() {
   useEffect(() => {
     if (!isBackendConfigured() || !user) return
 
+    setLoading(true)
+    setError("")
+
     api.patients
-      .getPrescriptions(getPatientId(user))
-
-      .then(({ prescriptions }) => {
-        const next = (prescriptions as Array<{
-          id?: string
-          medication?: {
-            name?: string
-            strength?: string
-            unit?: string
-            nextDose?: string
-          }
-        }>)
-
-          .map((rx, index) => ({
-            id: rx.id ?? `dose-${index}`,
-            name: rx.medication?.name ?? "Medication",
-            strength: rx.medication?.strength ?? "",
-            unit: rx.medication?.unit ?? "",
-            scheduledTime: rx.medication?.nextDose ?? "Today",
-            status: "pending" as const,
-          }))
+      .getDoseSchedules(getPatientId(user))
+      .then(({ schedules }) => {
+        const next = (schedules || []).map((s) => ({
+          id: s.id,
+          name: s.medicationName,
+          strength: s.dosage,
+          unit: "",
+          scheduledTime: s.scheduledTime,
+          status: (s.status === "scheduled" ? "pending" : s.status) as "pending" | "taken" | "late" | "skipped",
+          loggedAt: s.loggedAt ? new Date(s.loggedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : undefined,
+          reason: s.reason || undefined,
+        }))
 
         setDoses(next)
       })
-
       .catch(() => setError("Today's dose schedule could not be loaded."))
-
       .finally(() => setLoading(false))
   }, [user])
 
   const handleTake = async (id: string) => {
     setError("")
-
     setLogging(id)
 
     try {
@@ -139,13 +130,12 @@ export default function DoseCenter() {
           patientId: getPatientId(user),
           scheduleId: id,
           status: "taken",
+          idempotencyKey: crypto.randomUUID(),
         })
       }
     } catch {
       setError("Dose could not be saved. Try again.")
-
       setLogging(null)
-
       return
     }
 
@@ -161,15 +151,12 @@ export default function DoseCenter() {
     )
 
     setJustTaken(id)
-
     setLogging(null)
-
     setTimeout(() => setJustTaken(null), 2000)
   }
 
   const handleSkip = async (id: string) => {
     setError("")
-
     setLogging(id)
 
     try {
@@ -179,13 +166,12 @@ export default function DoseCenter() {
           scheduleId: id,
           status: "skipped",
           reason: skipReason,
+          idempotencyKey: crypto.randomUUID(),
         })
       }
     } catch {
       setError("Dose could not be saved. Try again.")
-
       setLogging(null)
-
       return
     }
 
@@ -196,13 +182,11 @@ export default function DoseCenter() {
     )
 
     setLogging(null)
-
     setSkipReason("")
   }
 
   const handleLate = async (id: string) => {
     setError("")
-
     setLogging(id)
 
     try {
@@ -211,13 +195,12 @@ export default function DoseCenter() {
           patientId: getPatientId(user),
           scheduleId: id,
           status: "late",
+          idempotencyKey: crypto.randomUUID(),
         })
       }
     } catch {
       setError("Dose could not be saved. Try again.")
-
       setLogging(null)
-
       return
     }
 
@@ -233,7 +216,6 @@ export default function DoseCenter() {
     )
 
     setLateMode(null)
-
     setLogging(null)
   }
 

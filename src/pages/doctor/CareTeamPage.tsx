@@ -76,14 +76,14 @@ export default function CareTeamPage() {
         setCareTeam(careTeamResult.members)
 
         if (pipelineResult && pipelineResult.stages.length > 0) {
-          const mappedStages: PipelineStage[] = pipelineResult.stages.map((stage) => ({
+          const mappedStages: PipelineStage[] = pipelineResult.stages.map((stage: any) => ({
             id: stage.id,
             name: stage.agentName || stage.stageKey,
             agentName: stage.stageKey,
             description: stage.agentName,
             status: stage.status === "retrying" ? "running" : stage.status,
             lastRun: stage.updatedAt,
-            logs: (stage.logs || []).map((l) => ({
+            logs: (stage.logs || []).map((l: any) => ({
               id: l.id,
               timestamp: l.createdAt || new Date().toISOString(),
               level: l.level,

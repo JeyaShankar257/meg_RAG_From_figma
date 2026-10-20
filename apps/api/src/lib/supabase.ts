@@ -39,6 +39,18 @@ export function getAuthAdminClient(): SupabaseClient {
 }
 
 /**
+ * Returns an unauthenticated client using the anon key for operations like
+ * signInWithPassword and verifyOtp that should never mutate or pollute the
+ * privileged admin client's credentials.
+ */
+export function getPublicAuthClient(): SupabaseClient {
+    const config = getConfig();
+    return createClient(config.supabaseUrl, config.supabaseAnonKey, {
+        auth: { persistSession: false, autoRefreshToken: false },
+    });
+}
+
+/**
  * Returns a user-scoped Supabase client that respects Postgres Row-Level Security.
  */
 export function getUserClient(accessToken: string): SupabaseClient {

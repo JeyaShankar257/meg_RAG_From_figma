@@ -50,6 +50,21 @@ vi.mock("../lib/supabase.js", () => {
                 return { data: {}, error: null };
             }),
             maybeSingle: vi.fn().mockImplementation(async () => {
+                if (table === "patients") {
+                    return {
+                        data: {
+                            id: "p-001",
+                            workspace_id: "a0000000-0000-0000-0000-000000000001",
+                            profile_id: "b0000000-0000-0000-0000-000000000001",
+                            status: "active",
+                            full_name: "Marcus Rivera",
+                            date_of_birth: "1978-04-12",
+                            contact_email: "m.rivera@email.com",
+                            is_deleted: false,
+                        },
+                        error: null,
+                    };
+                }
                 if (table === "consent_records") {
                     return {
                         data: {

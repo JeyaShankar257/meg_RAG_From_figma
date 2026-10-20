@@ -1,0 +1,36 @@
+{
+  "description": "Contract fixture: valid patient adherence calculation and streak response",
+  "patientId": "p-001",
+  "score": 93,
+  "takenPercentage": 86,
+  "latePercentage": 7,
+  "missedPercentage": 5,
+  "skippedPercentage": 2,
+  "takenCount": 38,
+  "lateCount": 3,
+  "missedCount": 2,
+  "skippedCount": 1,
+  "currentStreakDays": 14,
+  "trend": "up",
+  "calculatedAt": "2026-10-17T20:00:00.000Z",
+  "logs": [
+    {
+      "id": "log-001",
+      "scheduleId": "e0a6d51c-4b36-4191-88f5-9304e7cf4a91",
+      "patientId": "p-001",
+      "status": "taken",
+      "method": "oral",
+      "idempotencyKey": "idem-fixture-001",
+      "loggedAt": "2026-10-17T08:04:12.000Z"
+    },
+    {
+      "id": "log-002",
+      "scheduleId": "9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d",
+      "patientId": "p-001",
+      "status": "taken",
+      "method": "oral",
+      "idempotencyKey": "idem-fixture-002",
+      "loggedAt": "2026-10-17T08:04:12.000Z"
+    }
+  ]
+}

@@ -17,7 +17,10 @@ import NewPatient from "./pages/doctor/NewPatient"
 import DoctorSettings from "./pages/doctor/Settings"
 import ChangePassword from "./pages/doctor/ChangePassword"
 import DoctorAcceptInvitation from "./pages/doctor/AcceptInvitation"
-import AdminDoctorManagement from "./pages/doctor/AdminDoctorManagement"
+
+import AdminLogin from "./pages/admin/Login"
+import AdminShell from "./components/admin/AdminShell"
+import AdminDashboard from "./pages/admin/AdminDashboard"
 
 import PatientLogin from "./pages/patient/Login"
 import AcceptInvitation from "./pages/patient/AcceptInvitation"
@@ -68,7 +71,25 @@ export default function App() {
               element={<CareTeamPage />}
             />
             <Route path="settings" element={<DoctorSettings />} />
-            <Route path="admin/accounts" element={<AdminDoctorManagement />} />
+            <Route
+              path="admin/accounts"
+              element={<Navigate to="/admin" replace />}
+            />
+          </Route>
+
+          {/* Admin auth */}
+          <Route path="/admin/login" element={<AdminLogin />} />
+
+          {/* Admin portal */}
+          <Route
+            path="/admin"
+            element={
+              <RequireRole role="admin">
+                <AdminShell />
+              </RequireRole>
+            }
+          >
+            <Route index element={<AdminDashboard />} />
           </Route>
 
           {/* Patient auth */}
