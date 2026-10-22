@@ -4,6 +4,7 @@ import type {
   AIAnalysis,
   AIPrescriptionSuggestion,
   Medication,
+  PatientAdherenceSummary,
   PatientUploadedReport,
   Prescription,
   RagAnalysisResponse,
@@ -77,6 +78,28 @@ export default function PatientPage() {
   const [patient, setPatient] = useState(() => DEMO_PATIENTS.find((p) => p.id === patientId) || DEMO_PATIENTS[0]);
   const [visits, setVisits] = useState(() => DEMO_VISITS.filter((v) => v.patientId === patient.id));
   const [patientReports, setPatientReports] = useState<PatientUploadedReport[]>(() => isBackendConfigured() ? [] : getPatientUploadedReports(patient.id));
+  const [adherence, setAdherence] = useState<PatientAdherenceSummary | null>(() =>
+    isBackendConfigured() ? null : {
+      patientId: patientId || "p-001",
+      score: 72,
+      takenPercentage: 72,
+      missedPercentage: 28,
+      takenCount: 65,
+      missedCount: 25,
+      currentStreakDays: 5,
+      trend: "stable",
+      calculatedAt: new Date().toISOString(),
+      logs: [],
+      heatmapData: DEMO_ADHERENCE.heatmapData,
+      sparklineData: DEMO_SPARKLINE,
+    }
+  );
+  const [escalation, setEscalation] = useState<any>(() =>
+    isBackendConfigured() ? null : DEMO_AI_ANALYSIS
+  );
+  const [careTeam, setCareTeam] = useState<typeof DEMO_CARE_TEAM>(() =>
+    isBackendConfigured() ? [] : DEMO_CARE_TEAM
+  );
   const [loadingData, setLoadingData] = useState(isBackendConfigured());
   const [dataError, setDataError] = useState("");
   const [reindexingReportId, setReindexingReportId] = useState<string | null>(null);
@@ -84,18 +107,56 @@ export default function PatientPage() {
   useEffect(() => {
     if (!isBackendConfigured() || !patientId) return;
     setLoadingData(true);
-    Promise.all([
+    setDataError("");
+
+    Promise.allSettled([
       api.patients.get(patientId),
       api.patients.getVisits(patientId),
       api.reports.list(patientId),
       api.patients.getPrescriptions(patientId),
-    ]).then(([patientResult, visitsResult, reportsResult, prescriptionsResult]) => {
-      setPatient(patientResult.patient);
-      setVisits(visitsResult.visits);
-      setPatientReports(reportsResult.reports as PatientUploadedReport[]);
-      setPrescriptions(prescriptionsResult.prescriptions as Prescription[]);
-    }).catch(() => setDataError("Patient data could not be loaded. Retry to refresh."))
-      .finally(() => setLoadingData(false));
+      api.patients.getAdherence(patientId),
+      api.escalations.list(patientId),
+      api.careTeam.list(),
+    ]).then(([patientRes, visitsRes, reportsRes, prescriptionsRes, adherenceRes, escalationsRes, careTeamRes]) => {
+      let patientLoaded = false;
+      if (patientRes.status === "fulfilled" && patientRes.value?.patient) {
+        setPatient(patientRes.value.patient);
+        patientLoaded = true;
+      }
+
+      if (visitsRes.status === "fulfilled" && Array.isArray(visitsRes.value?.visits)) {
+        setVisits(visitsRes.value.visits);
+      }
+
+      if (reportsRes.status === "fulfilled" && Array.isArray(reportsRes.value?.reports)) {
+        setPatientReports(reportsRes.value.reports as PatientUploadedReport[]);
+      }
+
+      if (prescriptionsRes.status === "fulfilled" && Array.isArray(prescriptionsRes.value?.prescriptions)) {
+        setPrescriptions(prescriptionsRes.value.prescriptions as Prescription[]);
+      }
+
+      if (adherenceRes.status === "fulfilled" && adherenceRes.value) {
+        setAdherence(adherenceRes.value);
+      }
+
+      if (escalationsRes.status === "fulfilled" && escalationsRes.value?.escalations?.length > 0) {
+        setEscalation(escalationsRes.value.escalations[0]);
+      }
+
+      if (careTeamRes.status === "fulfilled" && careTeamRes.value?.members?.length > 0) {
+        setCareTeam(careTeamRes.value.members);
+      }
+
+      if (!patientLoaded) {
+        const errorReason = patientRes.status === "rejected" ? (patientRes.reason?.message || "") : "";
+        setDataError(errorReason || "Patient record could not be loaded. Please verify your doctor assignment or retry.");
+      }
+    }).catch((err) => {
+      setDataError(err?.message || "Patient data could not be loaded. Retry to refresh.");
+    }).finally(() => {
+      setLoadingData(false);
+    });
   }, [patientId]);
 
   useEffect(() => {
@@ -382,13 +443,14 @@ export default function PatientPage() {
 
   const handleTabChange = (tab: string) => {
     if (tab === "Reports") {
-      if (isBackendConfigured()) {
+      const activePid = patientId || patient.id;
+      if (isBackendConfigured() && activePid) {
         api.reports
-          .list(patient.id)
+          .list(activePid)
           .then(({ reports }) => setPatientReports(reports as PatientUploadedReport[]))
           .catch(() => setDataError("Failed to refresh reports"));
       } else {
-        setPatientReports(getPatientUploadedReports(patient.id));
+        setPatientReports(getPatientUploadedReports(activePid));
       }
     }
     setActiveTab(tab);
@@ -424,7 +486,7 @@ export default function PatientPage() {
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <TrustBadge score={patient.adherenceScore} trend={patient.trend} size="md" />
+            <TrustBadge score={adherence?.score ?? patient.adherenceScore} trend={adherence?.trend ?? patient.trend} size="md" />
             <Button
               variant="outline"
               size="sm"
@@ -438,7 +500,7 @@ export default function PatientPage() {
         {/* Care team chips */}
         <div className="flex items-center gap-2 mt-3 flex-wrap">
           <span className="text-xs text-slate-400">Care team:</span>
-          {DEMO_CARE_TEAM.map((m) => (
+          {(careTeam.length > 0 ? careTeam : DEMO_CARE_TEAM).map((m) => (
             <span key={m.id} className="text-xs bg-slate-100 text-slate-600 px-2.5 py-1 rounded-full border border-slate-200">
               {m.name} · <span className="text-slate-400">{m.role}</span>
             </span>
@@ -474,17 +536,17 @@ export default function PatientPage() {
                 <CardTitle>Adherence Score</CardTitle>
               </CardHeader>
               <div className="flex items-center gap-4">
-                <AdherenceRing score={patient.adherenceScore} size={100} />
+                <AdherenceRing score={adherence?.score ?? patient.adherenceScore} size={100} />
                 <div className="space-y-2 text-sm">
                   {[
                     {
                       label: "Taken",
-                      count: DEMO_ADHERENCE.taken + DEMO_ADHERENCE.late,
+                      count: adherence ? adherence.takenCount : DEMO_ADHERENCE.taken,
                       color: "text-emerald-600",
                     },
                     {
                       label: "Missed",
-                      count: DEMO_ADHERENCE.missed + DEMO_ADHERENCE.skipped,
+                      count: adherence ? adherence.missedCount : DEMO_ADHERENCE.missed,
                       color: "text-rose-600",
                     },
                   ].map((s) => (
@@ -540,9 +602,11 @@ export default function PatientPage() {
               <Card padding="md">
                 <CardHeader>
                   <CardTitle>Adherence Score Trend (3 months)</CardTitle>
-                  <Badge variant="success">+{DEMO_ADHERENCE.trend}% vs last period</Badge>
+                  <Badge variant={adherence?.trend === "up" ? "success" : adherence?.trend === "down" ? "error" : "default"}>
+                    {adherence?.trend === "up" ? "Improving" : adherence?.trend === "down" ? "Declining" : "Stable"} trend
+                  </Badge>
                 </CardHeader>
-                <ScoreTrendChart data={DEMO_SPARKLINE} height={200} />
+                <ScoreTrendChart data={adherence?.sparklineData && adherence.sparklineData.length > 0 ? adherence.sparklineData : DEMO_SPARKLINE} height={200} />
               </Card>
             </div>
           </div>
@@ -627,12 +691,12 @@ export default function PatientPage() {
               {[
                 {
                   label: "Taken",
-                  value: DEMO_ADHERENCE.taken + DEMO_ADHERENCE.late,
+                  value: adherence ? adherence.takenCount : DEMO_ADHERENCE.taken,
                   color: "emerald",
                 },
                 {
                   label: "Missed",
-                  value: DEMO_ADHERENCE.missed + DEMO_ADHERENCE.skipped,
+                  value: adherence ? adherence.missedCount : DEMO_ADHERENCE.missed,
                   color: "rose",
                 },
               ].map((s) => (
@@ -649,10 +713,10 @@ export default function PatientPage() {
                 <CardTitle>90-Day Dose Heatmap</CardTitle>
                 <div className="flex items-center gap-1.5 text-xs text-slate-400">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width={12} height={12}><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-                  {DEMO_ADHERENCE.deliveryFailures} delivery failures excluded from miss count
+                  Binary dose logs: Taken vs. Missed
                 </div>
               </CardHeader>
-              <DoseHeatmap data={DEMO_ADHERENCE.heatmapData} />
+              <DoseHeatmap data={adherence?.heatmapData && adherence.heatmapData.length > 0 ? adherence.heatmapData : DEMO_ADHERENCE.heatmapData} />
             </Card>
 
             <Card padding="md">
@@ -660,32 +724,32 @@ export default function PatientPage() {
                 <CardTitle>AI Root-Cause Classification</CardTitle>
                 <Badge variant="ai">
                   <svg viewBox="0 0 24 24" className="fill-cyan-600" width={10} height={10}><path d="M12 2a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 0 1 7 7h1a1 1 0 0 1 0 2h-1v1a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-1H2a1 1 0 0 1 0-2h1a7 7 0 0 1 7-7h1V5.73c-.6-.34-1-.99-1-1.73a2 2 0 0 1 2-2z"/></svg>
-                  Research prototype
+                  {isBackendConfigured() ? "Pattern Detection Agent" : "Research prototype"}
                 </Badge>
               </CardHeader>
               <div className="space-y-3">
                 <div className="flex items-center gap-3 flex-wrap">
                   <div className={`px-3 py-1 rounded-full text-sm font-medium border ${
-                    DEMO_AI_ANALYSIS.severity === "urgent" ? "bg-rose-50 text-rose-700 border-rose-200" :
-                    DEMO_AI_ANALYSIS.severity === "concerning" ? "bg-amber-50 text-amber-700 border-amber-200" :
+                    (escalation?.severity ?? DEMO_AI_ANALYSIS.severity) === "urgent" ? "bg-rose-50 text-rose-700 border-rose-200" :
+                    (escalation?.severity ?? DEMO_AI_ANALYSIS.severity) === "concerning" ? "bg-amber-50 text-amber-700 border-amber-200" :
                     "bg-emerald-50 text-emerald-700 border-emerald-200"
                   }`}>
-                    Severity: {DEMO_AI_ANALYSIS.severity}
+                    Severity: {escalation?.severity ?? DEMO_AI_ANALYSIS.severity}
                   </div>
                   <div className="text-sm text-slate-600">
-                    Confidence: <span className="font-semibold text-slate-900">{Math.round(DEMO_AI_ANALYSIS.confidence * 100)}%</span>
+                    Confidence: <span className="font-semibold text-slate-900">{Math.round((escalation?.confidence ?? DEMO_AI_ANALYSIS.confidence) * 100)}%</span>
                   </div>
-                  <Badge variant="default">{DEMO_AI_ANALYSIS.rootCause}</Badge>
+                  <Badge variant="default">{escalation?.rootCause ?? DEMO_AI_ANALYSIS.rootCause}</Badge>
                 </div>
 
                 <div className="bg-slate-50 rounded-xl p-4 border border-slate-100">
                   <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">AI Explanation</p>
-                  <p className="text-sm text-slate-700 leading-relaxed">{DEMO_AI_ANALYSIS.explanation}</p>
+                  <p className="text-sm text-slate-700 leading-relaxed">{escalation?.explanation ?? DEMO_AI_ANALYSIS.explanation}</p>
                 </div>
 
                 <div className="flex items-center gap-2 text-xs text-slate-400 bg-amber-50 border border-amber-100 px-3 py-2 rounded-lg">
                   <svg viewBox="0 0 24 24" className="fill-amber-500 flex-shrink-0" width={12} height={12}><path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/></svg>
-                  AI output requires doctor review before clinical action. Model: {DEMO_AI_ANALYSIS.modelVersion}
+                  AI output requires doctor review before clinical action. Model: {escalation?.aiModelVersion ?? escalation?.modelVersion ?? DEMO_AI_ANALYSIS.modelVersion}
                 </div>
               </div>
             </Card>
@@ -814,7 +878,7 @@ export default function PatientPage() {
                   .filter((prescription) => prescription.status === "active")
                   .slice(0, 2)
                   .map((prescription) => `${prescription.medication.name} ${prescription.medication.strength}${prescription.medication.unit}`),
-                `${patient.adherenceScore}% adherence`,
+                `${adherence?.score ?? patient.adherenceScore}% adherence (${adherence?.takenCount ?? 0} taken, ${adherence?.missedCount ?? 0} missed)`,
                 `${patientReports.filter((report) => report.indexingStatus === "ready").length} searchable reports`,
               ]}
               initialResponse={ragResponse}

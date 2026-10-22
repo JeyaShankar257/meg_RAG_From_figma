@@ -579,19 +579,26 @@ export const api = {
           )
         : Promise.resolve<PatientAdherenceSummary>({
             patientId,
-            score: 93,
-            takenPercentage: 86,
-            latePercentage: 7,
+            score: 95,
+            takenPercentage: 95,
+            latePercentage: 0,
             missedPercentage: 5,
-            skippedPercentage: 2,
+            skippedPercentage: 0,
             takenCount: 38,
-            lateCount: 3,
+            lateCount: 0,
             missedCount: 2,
-            skippedCount: 1,
+            skippedCount: 0,
             currentStreakDays: 14,
             trend: "up",
             calculatedAt: new Date().toISOString(),
             logs: [],
+            heatmapData: DEMO_ADHERENCE.heatmapData,
+            sparklineData: [
+              { date: "2026-06-15", value: 88 },
+              { date: "2026-07-01", value: 90 },
+              { date: "2026-08-01", value: 92 },
+              { date: "2026-09-01", value: 95 },
+            ],
           }),
 
     getTransparency: (patientId: string) =>

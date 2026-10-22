@@ -274,9 +274,14 @@ describe("Patient Portal Workflows (Task 2.1 - 2.6)", () => {
             expect(res.status).toBe(200);
             const body = (await res.json()) as any;
             expect(body.takenCount).toBe(1);
+            expect(body.missedCount).toBe(0);
             expect(body.score).toBe(100);
             expect(body.currentStreakDays).toBe(1);
             expect(body.trend).toBe("up");
+            expect(body.heatmapData).toBeInstanceOf(Array);
+            expect(body.heatmapData.length).toBe(84);
+            expect(body.sparklineData).toBeInstanceOf(Array);
+            expect(body.sparklineData.length).toBe(12);
         });
     });
 

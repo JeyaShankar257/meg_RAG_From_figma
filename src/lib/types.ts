@@ -98,8 +98,10 @@ export interface RetrievedEvidence {
   chunkId?: string;
   title: string;
   sourceType: RagSourceType;
+  sourceTier?: "patient_record" | "external_mcp";
   publisher?: string;
   date?: string;
+  url?: string;
   excerpt: string;
   relevanceNote?: string;
   similarityScore?: number;
@@ -137,6 +139,12 @@ export interface AIPrescriptionSuggestion {
   instructions: string;
   reasoning: string;
   citations: Citation[];
+  safetyCheck?: {
+    status: "verified" | "warning" | "unavailable";
+    source: string;
+    details: string;
+    interactions?: string[];
+  };
 }
 
 export interface AIAnalysis {
@@ -170,6 +178,8 @@ export interface Citation {
   type: "guideline" | "research_study" | "other";
   url?: string;
   evidenceId?: string;
+  sourceLabel?: string;
+  sourceTier?: "patient_record" | "external_mcp";
 }
 
 export interface Prescription {
@@ -482,13 +492,13 @@ export interface PatientAdherenceSummary {
   patientId: string;
   score: number;
   takenPercentage: number;
-  latePercentage: number;
+  latePercentage?: number;
   missedPercentage: number;
-  skippedPercentage: number;
+  skippedPercentage?: number;
   takenCount: number;
-  lateCount: number;
+  lateCount?: number;
   missedCount: number;
-  skippedCount: number;
+  skippedCount?: number;
   currentStreakDays: number;
   trend: "up" | "down" | "stable";
   calculatedAt: string;
@@ -502,6 +512,8 @@ export interface PatientAdherenceSummary {
     idempotencyKey?: string;
     loggedAt?: string;
   }>;
+  heatmapData?: HeatmapCell[];
+  sparklineData?: SparklinePoint[];
 }
 
 export interface TransparencyTrustSignal {

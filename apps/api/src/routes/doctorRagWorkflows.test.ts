@@ -180,17 +180,21 @@ vi.mock("../lib/supabase.js", () => {
                 currentData = (mockStore[table] || []).filter((r) => r[field] === val);
                 return query;
             }),
+            in: vi.fn().mockImplementation((field: string, vals: any[]) => {
+                currentData = (mockStore[table] || []).filter((r) => vals.includes(r[field]));
+                return query;
+            }),
             order: vi.fn().mockReturnThis(),
             limit: vi.fn().mockReturnThis(),
             single: vi.fn().mockImplementation(async () => {
-                const item = currentData[0] || (mockStore[table] || [])[0];
+                const item = currentData[0];
                 return {
-                    data: item ? { ...item, patients: { id: "p-001", workspace_id: "a0000000-0000-0000-0000-000000000001" } } : null,
+                    data: item ? { ...item, patients: item.patients || { id: item.id || "p-001", workspace_id: item.workspace_id || "a0000000-0000-0000-0000-000000000001" } } : null,
                     error: item ? null : { message: "Not found" },
                 };
             }),
             maybeSingle: vi.fn().mockImplementation(async () => {
-                const item = currentData[0] || (mockStore[table] || [])[0];
+                const item = currentData[0];
                 return { data: item || null, error: null };
             }),
             then: (resolve: any) => resolve({ data: currentData, error: null }),
@@ -252,6 +256,18 @@ describe("Doctor RAG AI Assistant API Endpoints (Task 4.1 - 4.7)", () => {
             // Verify AI suggestion is advisory and does not activate a prescription (Task 4.6)
             expect(data.analysis.safetyFlags).toContain("doctor_review_required");
             expect(data.analysis.suggestedMedications[0].instructions).toBeDefined();
+
+            // Verify Hybrid RAG & MCP tool integration (Tasks 2.1 & 2.2)
+            expect(data.evidence.some((e: any) => e.sourceTier === "patient_record")).toBe(true);
+            expect(data.evidence.some((e: any) => e.sourceTier === "external_mcp")).toBe(true);
+            const externalEv = data.evidence.find((e: any) => e.sourceTier === "external_mcp");
+            expect(externalEv.url).toMatch(/^https:\/\//);
+
+            // Verify safety check on suggested medication
+            const rxSuggestion = data.analysis.suggestedMedications[0];
+            expect(rxSuggestion.safetyCheck).toBeDefined();
+            expect(rxSuggestion.safetyCheck.source).toContain("OpenFDA");
+            expect(rxSuggestion.safetyCheck.status).toBeDefined();
         });
 
         it("denies non-doctor role from initiating RAG analysis", async () => {

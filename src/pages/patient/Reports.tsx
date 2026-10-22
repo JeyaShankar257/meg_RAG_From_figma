@@ -102,28 +102,35 @@ export default function Reports() {
     setUploading(true);
     try {
       if (isBackendConfigured()) {
+        const mimeType = file.type || (file.name.toLowerCase().endsWith(".pdf") ? "application/pdf" : "image/jpeg");
         const upload = await api.reports.getUploadUrl({
           patientId,
           fileName: file.name,
-          fileType: file.type,
+          mimeType,
+          fileType: mimeType,
+          sizeBytes: file.size,
           fileSize: file.size,
         });
         const uploadResponse = await fetch(upload.uploadUrl, {
           method: "PUT",
-          headers: { "Content-Type": file.type },
+          headers: { "Content-Type": mimeType },
           body: file,
         });
         if (!uploadResponse.ok) throw new Error("Upload failed");
         const { report } = await api.reports.create({
           patientId,
           title: form.title.trim(),
+          label: form.title.trim() || file.name,
           category: form.category,
           reportDate: form.reportDate,
           note: form.note.trim() || undefined,
           fileName: file.name,
-          fileType: file.type,
+          mimeType,
+          fileType: mimeType,
+          sizeBytes: file.size,
           fileSize: file.size,
           storagePath: upload.storagePath,
+          sharedWithCareTeam: true,
         });
         setUploadedReports((current) => [report as PatientUploadedReport, ...current]);
       } else {

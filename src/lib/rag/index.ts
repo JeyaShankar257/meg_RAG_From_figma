@@ -1,13 +1,12 @@
 import { apiRagService } from "./apiAdapter";
 import { mockRagService } from "./mockAdapter";
+import { isBackendConfigured } from "../api/apiClient";
 
 export type RagMode = "api" | "mock";
 
 export function getRagMode(): RagMode {
-  return import.meta.env.VITE_RAG_MODE === "api" &&
-    import.meta.env.VITE_DEMO_MODE !== "true"
-    ? "api"
-    : "mock";
+  if (import.meta.env.VITE_RAG_MODE === "mock") return "mock";
+  return "api";
 }
 
 export function getRagService() {

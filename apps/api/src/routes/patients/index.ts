@@ -86,19 +86,22 @@ patientsRouter.get("/", async (c) => {
 // ─── 2. Get Patient Details (GET /patients/:id) ──────────────────────────────
 patientsRouter.get("/:id", async (c) => {
     const user = c.get("user");
-    const patientId = c.req.param("id");
+    const requestedId = c.req.param("id");
+    const candidateIds = [
+        requestedId,
+        requestedId.replace(/^PT-/i, "p-"),
+        requestedId.replace(/^PT-/i, "P-"),
+    ];
     const admin = getAdminClient();
-
-    const { data: patient, error } = await admin
-        .from("patients")
-        .select("*")
-        .eq("id", patientId)
-        .eq("is_deleted", false)
-        .single();
+    const patientQuery = admin.from("patients").select("*");
+    const { data: patient, error } = typeof (patientQuery as any).in === "function"
+        ? await (patientQuery as any).in("id", candidateIds).eq("is_deleted", false).limit(1).maybeSingle()
+        : await patientQuery.eq("id", requestedId).eq("is_deleted", false).maybeSingle();
 
     if (error || !patient) {
         throw ApiError.notFound("Patient record not found");
     }
+    const patientId = patient.id;
 
     // Load active assignments, grants, and consent for authorization check
     const [{ data: assignments }, { data: grants }, { data: consent }] = await Promise.all([
@@ -375,27 +378,33 @@ async function ensurePatientAccess(c: any, patientId: string) {
     const user = c.get("user");
     const admin = getAdminClient();
 
-    const { data: patient, error } = await admin
-        .from("patients")
-        .select("id, workspace_id, profile_id, status")
-        .eq("id", patientId)
-        .eq("is_deleted", false)
-        .maybeSingle();
+    const candidateIds = [
+        patientId,
+        patientId.replace(/^PT-/i, "p-"),
+        patientId.replace(/^PT-/i, "P-"),
+    ];
+
+    const patientQuery = admin.from("patients").select("id, workspace_id, profile_id, status");
+    const { data: patient, error } = typeof (patientQuery as any).in === "function"
+        ? await (patientQuery as any).in("id", candidateIds).eq("is_deleted", false).limit(1).maybeSingle()
+        : await patientQuery.eq("id", patientId).eq("is_deleted", false).maybeSingle();
 
     if (error || !patient) {
         throw ApiError.notFound("Patient record not found");
     }
 
+    const resolvedId = patient.id;
+
     const [{ data: assignments }, { data: grants }, { data: consent }] = await Promise.all([
         admin
             .from("care_team_assignments")
             .select("patient_id, doctor_profile_id, revoked_at")
-            .eq("patient_id", patientId)
+            .eq("patient_id", resolvedId)
             .is("revoked_at", null),
         admin
             .from("care_grants")
             .select("patient_id, grantee_profile_id, scope, revoked_at")
-            .eq("patient_id", patientId)
+            .eq("patient_id", resolvedId)
             .is("revoked_at", null),
         admin
             .from("consent_records")
@@ -603,18 +612,16 @@ patientsRouter.get("/:id/adherence", async (c) => {
     }));
 
     const takenCount = logs.filter((l: any) => l.status === "taken").length;
-    const lateCount = logs.filter((l: any) => l.status === "late").length;
     const missedCount = logs.filter((l: any) => l.status === "missed").length;
-    const skippedCount = logs.filter((l: any) => l.status === "skipped").length;
-    const totalCount = takenCount + lateCount + missedCount + skippedCount;
+    const totalCount = takenCount + missedCount;
 
     const takenPercentage = totalCount ? Math.round((takenCount / totalCount) * 100) : 0;
-    const latePercentage = totalCount ? Math.round((lateCount / totalCount) * 100) : 0;
+    const latePercentage = 0;
     const missedPercentage = totalCount ? Math.round((missedCount / totalCount) * 100) : 0;
-    const skippedPercentage = totalCount ? Math.round((skippedCount / totalCount) * 100) : 0;
-    const score = totalCount ? Math.round(((takenCount + lateCount) / totalCount) * 100) : 100;
+    const skippedPercentage = 0;
+    const score = totalCount ? Math.round((takenCount / totalCount) * 100) : 100;
 
-    // Calculate current adherence streak days (consecutive days with only taken/late doses)
+    // Calculate current adherence streak days (consecutive days with only taken doses)
     let currentStreakDays = 0;
     const daysMap = new Map<string, Array<string>>();
     for (const log of logs) {
@@ -629,12 +636,50 @@ patientsRouter.get("/:id/adherence", async (c) => {
         if (statuses.some((s) => s === "missed")) {
             break;
         }
-        if (statuses.some((s) => s === "taken" || s === "late")) {
+        if (statuses.some((s) => s === "taken")) {
             currentStreakDays++;
         }
     }
 
     const trend: "up" | "down" | "stable" = score >= 85 ? "up" : score < 70 ? "down" : "stable";
+
+    // Generate 84-day (12 weeks) binary heatmap cells
+    const now = new Date();
+    const heatmapData: Array<{ date: string; status: "taken" | "missed" | "none"; value: number }> = [];
+    for (let i = 83; i >= 0; i--) {
+        const d = new Date(now);
+        d.setDate(d.getDate() - i);
+        const dateStr = d.toISOString().split("T")[0];
+        const dayStatuses = daysMap.get(dateStr) || [];
+        let status: "taken" | "missed" | "none" = "none";
+        if (dayStatuses.includes("missed")) {
+            status = "missed";
+        } else if (dayStatuses.includes("taken")) {
+            status = "taken";
+        }
+        heatmapData.push({
+            date: dateStr,
+            status,
+            value: status === "taken" ? 1 : 0,
+        });
+    }
+
+    // Generate 3-month periodic sparkline data (12 weekly points)
+    const sparklineData: Array<{ date: string; value: number }> = [];
+    for (let w = 11; w >= 0; w--) {
+        const weekDate = new Date(now);
+        weekDate.setDate(weekDate.getDate() - w * 7);
+        const weekDateStr = weekDate.toISOString().split("T")[0];
+        const weekLogs = logs.filter((l: any) => l.loggedAt && l.loggedAt.split("T")[0] <= weekDateStr);
+        const weekTaken = weekLogs.filter((l: any) => l.status === "taken").length;
+        const weekMissed = weekLogs.filter((l: any) => l.status === "missed").length;
+        const weekTotal = weekTaken + weekMissed;
+        const weekScore = weekTotal > 0 ? Math.round((weekTaken / weekTotal) * 100) : score;
+        sparklineData.push({
+            date: weekDateStr,
+            value: weekScore,
+        });
+    }
 
     return c.json({
         patientId,
@@ -644,13 +689,15 @@ patientsRouter.get("/:id/adherence", async (c) => {
         missedPercentage,
         skippedPercentage,
         takenCount,
-        lateCount,
+        lateCount: 0,
         missedCount,
-        skippedCount,
+        skippedCount: 0,
         currentStreakDays,
         trend,
         calculatedAt: new Date().toISOString(),
         logs,
+        heatmapData,
+        sparklineData,
     });
 });
 

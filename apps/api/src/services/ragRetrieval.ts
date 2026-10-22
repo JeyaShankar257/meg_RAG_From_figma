@@ -76,6 +76,7 @@ export interface VectorSearchParams {
     topK?: number;
     similarityThreshold?: number;
     candidates: VectorSearchCandidate[];
+    queryText?: string;
 }
 
 export interface RankedRetrievalResult {
@@ -139,6 +140,7 @@ export function filterAndRankChunks(params: VectorSearchParams): RankedRetrieval
         topK = 6,
         similarityThreshold = 0.65,
         candidates,
+        queryText,
     } = params;
 
     if (queryEmbedding.length !== 768) {
@@ -146,6 +148,14 @@ export function filterAndRankChunks(params: VectorSearchParams): RankedRetrieval
     }
 
     const scored: Array<Omit<RankedRetrievalResult, "rank">> = [];
+
+    // Pre-calculate search keywords if queryText is provided
+    const queryWords = queryText
+        ? queryText.toLowerCase().split(/\W+/).filter((w) => w.length > 2)
+        : [];
+    const isReportInquiry = queryText
+        ? /report|lab|test|result|finding|panel|information|summary|pdf|document/i.test(queryText)
+        : false;
 
     for (const candidate of candidates) {
         const { chunk, source, reportMetadata } = candidate;
@@ -183,8 +193,24 @@ export function filterAndRankChunks(params: VectorSearchParams): RankedRetrieval
             }
         }
 
-        // 4. Compute vector similarity
-        const score = cosineSimilarity(queryEmbedding, chunk.embedding);
+        // 4. Compute vector similarity & hybrid lexical relevance
+        let score = cosineSimilarity(queryEmbedding, chunk.embedding);
+
+        if (queryWords.length > 0) {
+            const chunkLower = (chunk.chunkText + " " + source.title).toLowerCase();
+            let matches = 0;
+            for (const w of queryWords) {
+                if (chunkLower.includes(w)) matches++;
+            }
+            const matchRatio = matches / queryWords.length;
+            const isPatientRecord = source.patientId === patientId || chunk.patientId === patientId;
+
+            if (isPatientRecord && isReportInquiry) {
+                score = Math.max(score, 0.78 + matchRatio * 0.15);
+            } else if (matchRatio >= 0.25) {
+                score = Math.max(score, 0.68 + matchRatio * 0.25);
+            }
+        }
 
         // 5. Similarity thresholding
         if (score >= similarityThreshold) {
@@ -196,7 +222,7 @@ export function filterAndRankChunks(params: VectorSearchParams): RankedRetrieval
                 publisher: source.publisher,
                 publicationDate: source.publicationDate,
                 chunkText: chunk.chunkText,
-                similarityScore: score,
+                similarityScore: Number(score.toFixed(4)),
                 chunkIndex: chunk.chunkIndex,
                 patientId: source.patientId ?? chunk.patientId ?? null,
             });

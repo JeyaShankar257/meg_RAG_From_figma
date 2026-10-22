@@ -38,7 +38,7 @@ export default function RagAssistantPanel({
 
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault();
-    void runAnalysis({ symptoms: "", question: query });
+    void runAnalysis({ symptoms: query, question: query });
   };
 
   return (

@@ -49,6 +49,54 @@ export default function PrescriptionSuggestionCard({
               <Badge variant="ai">AI suggested</Badge>
             </div>
 
+            {/* Live FDA Interaction Safety Pre-Check Pill (Task 3.2) */}
+            {medication.safetyCheck && (
+              <div className="mb-3">
+                {medication.safetyCheck.status === "verified" && (
+                  <div className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold bg-emerald-50 border border-emerald-200 text-emerald-800">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width={14} height={14} className="text-emerald-600 flex-shrink-0">
+                      <polyline points="20 6 9 17 4 12" />
+                    </svg>
+                    <span>✓ {medication.safetyCheck.details || "0 Adverse Interactions found via OpenFDA MCP"}</span>
+                  </div>
+                )}
+
+                {medication.safetyCheck.status === "warning" && (
+                  <div className="rounded-xl border border-rose-300 bg-rose-50/90 p-3.5 text-xs text-rose-800 animate-fade-in shadow-xs">
+                    <div className="flex items-center gap-1.5 font-bold text-rose-900 mb-1">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width={15} height={15} className="text-rose-600 flex-shrink-0">
+                        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                        <line x1="12" y1="9" x2="12" y2="13"/>
+                        <line x1="12" y1="17" x2="12.01" y2="17"/>
+                      </svg>
+                      <span>FDA Safety Alert ({medication.safetyCheck.source})</span>
+                    </div>
+                    <p className="leading-relaxed font-medium">{medication.safetyCheck.details}</p>
+                    {medication.safetyCheck.interactions && medication.safetyCheck.interactions.length > 0 && (
+                      <div className="mt-2 space-y-1">
+                        {medication.safetyCheck.interactions.map((interaction, i) => (
+                          <div key={i} className="text-rose-700 bg-rose-100/70 border border-rose-200 rounded px-2.5 py-1 text-[11px] font-mono leading-tight">
+                            {interaction}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {medication.safetyCheck.status === "unavailable" && (
+                  <div className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold bg-amber-50 border border-amber-200 text-amber-800">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width={14} height={14} className="text-amber-600 flex-shrink-0">
+                      <circle cx="12" cy="12" r="10"/>
+                      <line x1="12" y1="8" x2="12" y2="12"/>
+                      <line x1="12" y1="16" x2="12.01" y2="16"/>
+                    </svg>
+                    <span>{medication.safetyCheck.details || "External interaction check unavailable — manual verification required."}</span>
+                  </div>
+                )}
+              </div>
+            )}
+
             <div className="grid sm:grid-cols-2 gap-3 mb-3">
               {[
                 { label: "Medicine name", field: "name" as const, type: "text" },

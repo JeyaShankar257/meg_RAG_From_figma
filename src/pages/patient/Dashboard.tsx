@@ -79,8 +79,8 @@ export default function PatientDashboard() {
           score: adherenceResult.score,
           trend: adherenceResult.trend,
           taken: adherenceResult.takenCount,
-          late: adherenceResult.lateCount,
-          skipped: adherenceResult.skippedCount,
+          late: adherenceResult.lateCount ?? 0,
+          skipped: adherenceResult.skippedCount ?? 0,
           missed: adherenceResult.missedCount,
           currentStreakDays: adherenceResult.currentStreakDays,
         });

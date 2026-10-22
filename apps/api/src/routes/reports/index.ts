@@ -6,6 +6,7 @@ import { getConfig } from "../../config.js";
 import { authMiddleware, requireRole } from "../../middleware/auth.js";
 import { authorizePatientAccess } from "../../services/authorization.js";
 import type { UserContext } from "../../services/authorization.js";
+import { indexPatientReport } from "../../services/reportIndexing.js";
 
 export const reportsRouter = new Hono();
 reportsRouter.use("*", authMiddleware);
@@ -13,37 +14,82 @@ reportsRouter.use("*", authMiddleware);
 const ALLOWED_MIME_TYPES = ["application/pdf", "image/jpeg", "image/png"];
 const MAX_FILE_SIZE_BYTES = 20 * 1024 * 1024; // 20 MB
 
-const uploadUrlSchema = z.object({
-    patientId: z.string().min(1),
-    fileName: z.string().min(1),
-    mimeType: z.string().refine((m) => ALLOWED_MIME_TYPES.includes(m), {
+const uploadUrlSchema = z
+    .object({
+        patientId: z.string().min(1),
+        fileName: z.string().min(1),
+        mimeType: z.string().optional(),
+        fileType: z.string().optional(),
+        sizeBytes: z.number().optional(),
+        fileSize: z.number().optional(),
+    })
+    .transform((data) => {
+        const mime = data.mimeType || data.fileType || "application/pdf";
+        const size = data.sizeBytes ?? data.fileSize ?? 0;
+        return {
+            patientId: data.patientId,
+            fileName: data.fileName,
+            mimeType: mime,
+            sizeBytes: size,
+        };
+    })
+    .refine((data) => ALLOWED_MIME_TYPES.includes(data.mimeType), {
         message: "File type must be PDF, JPEG, or PNG",
-    }),
-    sizeBytes: z.number().max(MAX_FILE_SIZE_BYTES, "File size must not exceed 20 MB"),
-});
+        path: ["mimeType"],
+    })
+    .refine((data) => data.sizeBytes > 0 && data.sizeBytes <= MAX_FILE_SIZE_BYTES, {
+        message: "File size must not exceed 20 MB",
+        path: ["sizeBytes"],
+    });
 
-const createReportSchema = z.object({
-    patientId: z.string().min(1),
-    storagePath: z.string().min(1),
-    mimeType: z.string().refine((m) => ALLOWED_MIME_TYPES.includes(m)),
-    sizeBytes: z.number().max(MAX_FILE_SIZE_BYTES),
-    label: z.string().min(1),
-    sharedWithCareTeam: z.boolean().default(false),
-});
+const createReportSchema = z
+    .object({
+        patientId: z.string().min(1),
+        storagePath: z.string().min(1),
+        mimeType: z.string().optional(),
+        fileType: z.string().optional(),
+        sizeBytes: z.number().optional(),
+        fileSize: z.number().optional(),
+        label: z.string().optional(),
+        title: z.string().optional(),
+        sharedWithCareTeam: z.boolean().default(true),
+    })
+    .transform((data) => {
+        const mime = data.mimeType || data.fileType || "application/pdf";
+        const size = data.sizeBytes ?? data.fileSize ?? 0;
+        const label = data.label || data.title || "Medical Report";
+        return {
+            patientId: data.patientId,
+            storagePath: data.storagePath,
+            mimeType: mime,
+            sizeBytes: size,
+            label,
+            sharedWithCareTeam: data.sharedWithCareTeam,
+        };
+    })
+    .refine((data) => ALLOWED_MIME_TYPES.includes(data.mimeType), {
+        message: "File type must be PDF, JPEG, or PNG",
+        path: ["mimeType"],
+    });
 
 async function assertReportAccess(user: UserContext, patientId: string, requiredScope = "read_report") {
     const admin = getAdminClient();
-    const { data: patient } = await admin
-        .from("patients")
-        .select("id, workspace_id, profile_id")
-        .eq("id", patientId)
-        .single();
+    const candidateIds = [
+        patientId,
+        patientId.replace(/^PT-/i, "p-"),
+        patientId.replace(/^PT-/i, "P-"),
+    ];
+    const patientQuery = admin.from("patients").select("id, workspace_id, profile_id");
+    const { data: patient } = typeof (patientQuery as any).in === "function"
+        ? await (patientQuery as any).in("id", candidateIds).limit(1).maybeSingle()
+        : await patientQuery.eq("id", patientId).maybeSingle();
     if (!patient) throw ApiError.notFound("Patient not found");
 
+    const resolvedId = patient.id;
     const [{ data: assignments }, { data: grants }, { data: consent }] = await Promise.all([
-        admin.from("care_team_assignments").select("*").eq("patient_id", patientId),
-        admin.from("care_grants").select("*").eq("patient_id", patientId),
-        admin.from("consent_records").select("*").eq("patient_id", patientId).maybeSingle(),
+        admin.from("care_team_assignments").select("*").eq("patient_id", resolvedId),
+        admin.from("care_grants").select("*").eq("patient_id", resolvedId),
+        admin.from("consent_records").select("*").eq("patient_id", resolvedId).maybeSingle(),
     ]);
     const result = authorizePatientAccess({
         user,
@@ -61,7 +107,7 @@ async function assertReportAccess(user: UserContext, patientId: string, required
         })),
         consent: consent
             ? {
-                  patientId,
+                  patientId: resolvedId,
                   shareWithCareTeam: consent.share_with_care_team,
                   allowReminders: consent.allow_reminders,
                   allowAiAnalysis: consent.allow_ai_analysis,
@@ -144,6 +190,17 @@ reportsRouter.post("/", async (c) => {
         throw ApiError.internal("Failed to save report record", error?.message);
     }
 
+    // Trigger asynchronous background indexing into RAG knowledge_chunks
+    void indexPatientReport({
+        reportId: report.id,
+        patientId: report.patient_id,
+        workspaceId: user.workspaceId,
+        storagePath: report.storage_path,
+        filename: report.label,
+    }).catch((err) => {
+        console.error("[reportIndexing] Auto-indexing failed for report", report.id, err);
+    });
+
     await admin.from("audit_events").insert({
         workspace_id: user.workspaceId,
         actor_profile_id: user.profileId,
@@ -220,7 +277,28 @@ reportsRouter.get("/", async (c) => {
     const { data: reports, error } = await query;
     if (error) throw ApiError.internal("Failed to retrieve reports", error.message);
 
-    return c.json({ reports: reports || [] });
+    const formattedReports = (reports || []).map((r) => ({
+        id: r.id,
+        patientId: r.patient_id,
+        patient_id: r.patient_id,
+        title: r.label || "Medical Report",
+        label: r.label,
+        category: r.category || "blood_test",
+        reportDate: r.report_date || (r.uploaded_at ? r.uploaded_at.split("T")[0] : new Date().toISOString().split("T")[0]),
+        fileName: r.file_name || (r.storage_path ? r.storage_path.split("/").pop() : "document.pdf"),
+        fileType: r.mime_type || "application/pdf",
+        fileSize: r.size_bytes || 0,
+        storagePath: r.storage_path,
+        uploadedAt: r.uploaded_at,
+        status: r.review_status === "reviewed" ? "reviewed" : "shared",
+        review_status: r.review_status,
+        reviewedAt: r.reviewed_at,
+        indexingStatus: r.indexing_status || "ready",
+        indexingError: r.indexing_error,
+        note: r.note || "",
+    }));
+
+    return c.json({ reports: formattedReports });
 });
 
 // ─── 4. Get Signed Viewing URL (GET /reports/:id/view-url) ────────────────────
@@ -327,6 +405,17 @@ reportsRouter.post("/:id/reindex", requireRole("doctor", "admin"), async (c) => 
         .from("patient_reports")
         .update({ indexing_status: "indexing" })
         .eq("id", reportId);
+
+    // Trigger immediate background indexing
+    void indexPatientReport({
+        reportId,
+        patientId: report.patient_id,
+        workspaceId: user.workspaceId,
+        storagePath: report.storage_path,
+        filename: report.label,
+    }).catch((err) => {
+        console.error("[reportIndexing] Reindexing failed for report", reportId, err);
+    });
 
     // Enqueue durable index_uploaded_report job
     const idempotencyKey = `reindex_${reportId}_${Date.now()}`;

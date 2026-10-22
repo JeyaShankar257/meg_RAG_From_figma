@@ -107,43 +107,84 @@ export default function RetrievedEvidence({
               <p className="text-sm font-medium text-slate-700">No eligible evidence retrieved</p>
               <p className="text-xs text-slate-500 mt-1">Review the patient record or request additional information.</p>
             </div>
-          ) : safeEvidence.map((item, index) => (
-            <div key={`${item.sourceId}-${item.chunkId ?? index}`} className="rounded-xl border border-slate-200 bg-white p-4">
-              <div className="flex items-start justify-between gap-3 flex-wrap">
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap mb-1">
-                    <Badge variant={item.sourceType.startsWith("patient_") ? "info" : "outline"}>
-                      {SOURCE_LABELS[item.sourceType]}
-                    </Badge>
-                    {typeof item.similarityScore === "number" && (
-                      <span className="text-xs text-slate-400">
-                        Retrieval match {Math.round(item.similarityScore * 100)}%
-                      </span>
+          ) : safeEvidence.map((item, index) => {
+            const isExternalMcp = item.sourceTier === "external_mcp" || ["guideline", "research", "medication_reference"].includes(item.sourceType);
+            return (
+              <div
+                key={`${item.sourceId}-${item.chunkId ?? index}`}
+                className={`rounded-xl border p-4 ${
+                  isExternalMcp ? "border-purple-200 bg-purple-50/20" : "border-slate-200 bg-white"
+                }`}
+              >
+                <div className="flex items-start justify-between gap-3 flex-wrap">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap mb-1">
+                      {isExternalMcp ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-purple-100 text-purple-800 border border-purple-200">
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width={10} height={10}>
+                            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" strokeLinecap="round" strokeLinejoin="round"/>
+                          </svg>
+                          External Literature (MCP)
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-teal-100 text-teal-800 border border-teal-200">
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width={10} height={10}>
+                            <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>
+                            <rect x="8" y="2" width="8" height="4" rx="1" ry="1"/>
+                          </svg>
+                          Patient Record
+                        </span>
+                      )}
+                      <Badge variant="outline">
+                        {SOURCE_LABELS[item.sourceType] ?? item.sourceType}
+                      </Badge>
+                      {typeof item.similarityScore === "number" && (
+                        <span className="text-xs text-slate-400">
+                          Retrieval match {Math.round(item.similarityScore * 100)}%
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-sm font-semibold text-slate-900">{item.title}</p>
+                    {(item.publisher || item.date) && (
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        {[item.publisher, item.date].filter(Boolean).join(" · ")}
+                      </p>
+                    )}
+                    {item.url && (
+                      <a
+                        href={item.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-xs text-purple-700 hover:text-purple-900 hover:underline font-medium mt-1"
+                      >
+                        <span>View authoritative publication</span>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width={11} height={11}>
+                          <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+                          <polyline points="15 3 21 3 21 9"/>
+                          <line x1="10" y1="14" x2="21" y2="3"/>
+                        </svg>
+                      </a>
                     )}
                   </div>
-                  <p className="text-sm font-semibold text-slate-900">{item.title}</p>
-                  {(item.publisher || item.date) && (
-                    <p className="text-xs text-slate-500 mt-0.5">
-                      {[item.publisher, item.date].filter(Boolean).join(" · ")}
-                    </p>
-                  )}
+                  <span className="text-xs font-mono text-slate-400">Source {index + 1}</span>
                 </div>
-                <span className="text-xs font-mono text-slate-400">Source {index + 1}</span>
-              </div>
 
-              <div className="mt-3 rounded-lg border-l-4 border-cyan-300 bg-slate-50 px-3 py-2.5">
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-1">Retrieved excerpt</p>
-                <p className="text-sm leading-relaxed text-slate-700">{item.excerpt}</p>
-              </div>
+                <div className={`mt-3 rounded-lg border-l-4 px-3 py-2.5 ${
+                  isExternalMcp ? "border-purple-400 bg-purple-50/50" : "border-cyan-300 bg-slate-50"
+                }`}>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-1">Retrieved excerpt</p>
+                  <p className="text-sm leading-relaxed text-slate-700">{item.excerpt}</p>
+                </div>
 
-              {item.relevanceNote && (
-                <p className="mt-2 text-xs text-teal-700">
-                  <span className="font-semibold">Why it is relevant: </span>
-                  {item.relevanceNote}
-                </p>
-              )}
-            </div>
-          ))}
+                {item.relevanceNote && (
+                  <p className="mt-2 text-xs text-teal-700">
+                    <span className="font-semibold">Why it is relevant: </span>
+                    {item.relevanceNote}
+                  </p>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
     </Card>

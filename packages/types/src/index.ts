@@ -579,8 +579,10 @@ export interface RetrievedEvidence {
     chunkId?: string;
     title: string;
     sourceType: RagSourceType;
+    sourceTier?: "patient_record" | "external_mcp";
     publisher?: string;
     date?: string;
+    url?: string;
     excerpt: string;
     relevanceNote?: string;
     similarityScore?: number;
@@ -600,6 +602,7 @@ export interface Citation {
     relevanceScore: number;
     url?: string;
     publicationDate?: string;
+    sourceTier?: "patient_record" | "external_mcp";
 }
 
 export interface AIPrescriptionSuggestion {
@@ -613,6 +616,12 @@ export interface AIPrescriptionSuggestion {
     instructions: string;
     reasoning: string;
     citations: Citation[];
+    safetyCheck?: {
+        status: "verified" | "warning" | "unavailable";
+        source: string;
+        details: string;
+        interactions?: string[];
+    };
 }
 
 export interface AIAnalysis {
