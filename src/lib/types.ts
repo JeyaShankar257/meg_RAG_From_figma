@@ -171,15 +171,18 @@ export interface AIAnalysis {
 
 export interface Citation {
   id: string;
-  title: string;
-  publisher: string;
-  date: string;
-  relevanceNote: string;
-  type: "guideline" | "research_study" | "other";
+  title?: string;
+  publisher?: string;
+  date?: string;
+  relevanceNote?: string;
+  type?: "guideline" | "research_study" | "other" | "patient_record";
   url?: string;
   evidenceId?: string;
   sourceLabel?: string;
   sourceTier?: "patient_record" | "external_mcp";
+  excerpt?: string;
+  publicationDate?: string;
+  relevanceScore?: number;
 }
 
 export interface Prescription {

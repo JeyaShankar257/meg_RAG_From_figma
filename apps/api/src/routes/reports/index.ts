@@ -382,7 +382,7 @@ reportsRouter.patch("/:id/review", requireRole("doctor"), async (c) => {
 // ─── 6. Reindex Report (POST /reports/:id/reindex) (Task 4.4) ────────────────
 reportsRouter.post("/:id/reindex", requireRole("doctor", "admin"), async (c) => {
     const user = c.get("user");
-    const reportId = c.req.param("id");
+    const reportId = c.req.param("id") || "";
     const correlationId = (c.get("correlationId") as string) || "corr-" + Date.now();
     const admin = getAdminClient();
 

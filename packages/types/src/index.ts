@@ -603,6 +603,11 @@ export interface Citation {
     url?: string;
     publicationDate?: string;
     sourceTier?: "patient_record" | "external_mcp";
+    title?: string;
+    publisher?: string;
+    date?: string;
+    relevanceNote?: string;
+    type?: string;
 }
 
 export interface AIPrescriptionSuggestion {

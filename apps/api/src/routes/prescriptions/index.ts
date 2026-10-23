@@ -34,6 +34,7 @@ const approvalSuggestionSchema = z.object({
 });
 
 const approvePrescriptionSchema = z.object({
+    patientId: z.string().optional(),
     idempotencyKey: z.string().optional(),
     suggestion: approvalSuggestionSchema.optional(),
     editedValues: z.record(z.unknown()).optional(),
@@ -46,7 +47,7 @@ const approvePrescriptionSchema = z.object({
 // Transactional prescription review and approval with revision history, idempotency, and pipeline queue (Tasks 2.2, 2.3, 2.4)
 prescriptionsRouter.post("/:id/approve", requireRole("doctor"), async (c) => {
     const user = c.get("user");
-    const prescriptionId = c.req.param("id");
+    const prescriptionId = c.req.param("id") || "";
     const correlationId = (c.get("correlationId") as string) || "corr-" + Date.now();
     const body = await c.req.json().catch(() => ({}));
     const validated = approvePrescriptionSchema.parse(body);
@@ -57,7 +58,7 @@ prescriptionsRouter.post("/:id/approve", requireRole("doctor"), async (c) => {
     if (validated.idempotencyKey) {
         const { data: existingByKey } = await admin
             .from("prescriptions")
-            .select("*, patients(id, workspace_id)")
+            .select("*, medications(*), patients(id, workspace_id)")
             .eq("idempotency_key", validated.idempotencyKey)
             .maybeSingle();
 
@@ -72,61 +73,156 @@ prescriptionsRouter.post("/:id/approve", requireRole("doctor"), async (c) => {
         }
     }
 
-    // 2. Fetch prescription
-    const { data: prescription, error: fetchErr } = await admin
+    // 2. Fetch prescription if it already exists
+    let { data: prescription } = await admin
         .from("prescriptions")
-        .select("*, patients(id, workspace_id)")
+        .select("*, medications(*), patients(id, workspace_id)")
         .eq("id", prescriptionId)
-        .single();
-
-    if (fetchErr || !prescription) {
-        throw ApiError.notFound("Prescription not found");
-    }
-
-    if (prescription.status === "superseded") {
-        throw ApiError.badRequest("Prescription is superseded and cannot be approved");
-    }
-
-    // 3. Verify doctor is assigned to this patient
-    const { data: assignment } = await admin
-        .from("care_team_assignments")
-        .select("*")
-        .eq("patient_id", prescription.patient_id)
-        .eq("doctor_profile_id", user.profileId)
-        .is("revoked_at", null)
         .maybeSingle();
 
-    if (!assignment) {
-        throw ApiError.forbidden("Doctor is not assigned to this patient");
+    const approvedAt = new Date().toISOString();
+    let updatedPrescription: any = null;
+    let actualPrescriptionId = prescriptionId;
+
+    if (!prescription) {
+        // If not found in DB, check if this is an AI suggestion approval (e.g. rx-ai-... or has suggestion data)
+        let targetPatientId = validated.patientId;
+        if (!targetPatientId && prescriptionId.startsWith("rx-ai-")) {
+            const parts = prescriptionId.replace(/^rx-ai-/, "").split("-");
+            if (parts.length >= 2 && parts[0].toLowerCase().startsWith("p")) {
+                targetPatientId = `${parts[0]}-${parts[1]}`;
+            }
+        }
+        if (!targetPatientId && (validated.suggestion as any)?.patientId) {
+            targetPatientId = (validated.suggestion as any).patientId;
+        }
+
+        if (!targetPatientId || (!validated.suggestion && !validated.editedValues)) {
+            throw ApiError.notFound("Prescription not found");
+        }
+
+        const { data: patientRecord } = await admin
+            .from("patients")
+            .select("id, workspace_id")
+            .eq("id", targetPatientId)
+            .single();
+
+        if (!patientRecord) {
+            throw ApiError.notFound("Patient not found");
+        }
+
+        // Verify doctor is assigned to this patient
+        const { data: assignment } = await admin
+            .from("care_team_assignments")
+            .select("*")
+            .eq("patient_id", targetPatientId)
+            .eq("doctor_profile_id", user.profileId)
+            .is("revoked_at", null)
+            .maybeSingle();
+
+        if (!assignment) {
+            throw ApiError.forbidden("Doctor is not assigned to this patient");
+        }
+
+        const medName = String(validated.editedValues?.name || validated.suggestion?.name || "Medication");
+        const medDosage = String(validated.editedValues?.dosage || validated.editedValues?.strength || validated.suggestion?.strength || "");
+        const medForm = String(validated.editedValues?.frequency || validated.suggestion?.frequency || "daily");
+
+        // Create medication row
+        const { data: newMed, error: medErr } = await admin
+            .from("medications")
+            .insert({
+                patient_id: targetPatientId,
+                name: medName,
+                dosage: medDosage,
+                form: medForm,
+                prescribed_at: approvedAt,
+            })
+            .select()
+            .single();
+
+        if (medErr || !newMed) {
+            throw ApiError.internal("Failed to create medication record for prescription", medErr?.message);
+        }
+
+        // Create approved prescription row
+        const newPrescriptionData: Record<string, any> = {
+            patient_id: targetPatientId,
+            medication_id: newMed.id,
+            status: "approved",
+            suggested_by: "ai",
+            approved_by_profile_id: user.profileId,
+            approved_at: approvedAt,
+            ai_suggestion_snapshot: validated.suggestion || null,
+        };
+        if (validated.idempotencyKey) {
+            newPrescriptionData["idempotency_key"] = validated.idempotencyKey;
+        }
+
+        const { data: insertedPrescription, error: presErr } = await admin
+            .from("prescriptions")
+            .insert(newPrescriptionData)
+            .select("*, medications(*)")
+            .single();
+
+        if (presErr || !insertedPrescription) {
+            throw ApiError.internal("Failed to save approved prescription", presErr?.message);
+        }
+
+        prescription = {
+            ...insertedPrescription,
+            patients: patientRecord,
+        };
+        actualPrescriptionId = prescription.id;
+        updatedPrescription = prescription;
+    } else {
+        if (prescription.status === "superseded") {
+            throw ApiError.badRequest("Prescription is superseded and cannot be approved");
+        }
+
+        // 3. Verify doctor is assigned to this patient
+        const { data: assignment } = await admin
+            .from("care_team_assignments")
+            .select("*")
+            .eq("patient_id", prescription.patient_id)
+            .eq("doctor_profile_id", user.profileId)
+            .is("revoked_at", null)
+            .maybeSingle();
+
+        if (!assignment) {
+            throw ApiError.forbidden("Doctor is not assigned to this patient");
+        }
+
+        // 4. Atomically update prescription status to 'approved' and persist suggestion snapshot / idempotency key
+        const updateData: Record<string, any> = {
+            status: "approved",
+            approved_by_profile_id: user.profileId,
+            approved_at: approvedAt,
+        };
+        if (validated.idempotencyKey) {
+            updateData["idempotency_key"] = validated.idempotencyKey;
+        }
+        if (validated.suggestion) {
+            updateData["ai_suggestion_snapshot"] = validated.suggestion;
+        }
+
+        const { data: resUpdated, error: updateErr } = await admin
+            .from("prescriptions")
+            .update(updateData)
+            .eq("id", prescriptionId)
+            .select("*, medications(*)")
+            .single();
+
+        if (updateErr || !resUpdated) {
+            throw ApiError.internal("Failed to approve prescription", updateErr?.message);
+        }
+
+        updatedPrescription = resUpdated;
+        actualPrescriptionId = prescription.id;
     }
 
-    const approvedAt = new Date().toISOString();
     const patientWorkspaceId =
         (prescription.patients as any)?.workspace_id || user.workspaceId;
-
-    // 4. Atomically update prescription status to 'approved' and persist suggestion snapshot / idempotency key
-    const updateData: Record<string, any> = {
-        status: "approved",
-        approved_by_profile_id: user.profileId,
-        approved_at: approvedAt,
-    };
-    if (validated.idempotencyKey) {
-        updateData["idempotency_key"] = validated.idempotencyKey;
-    }
-    if (validated.suggestion) {
-        updateData["ai_suggestion_snapshot"] = validated.suggestion;
-    }
-
-    const { data: updatedPrescription, error: updateErr } = await admin
-        .from("prescriptions")
-        .update(updateData)
-        .eq("id", prescriptionId)
-        .select()
-        .single();
-
-    if (updateErr || !updatedPrescription) {
-        throw ApiError.internal("Failed to approve prescription", updateErr?.message);
-    }
 
     // 5. Record revision history if edited values were provided (Task 2.2)
     let revision = null;
@@ -137,7 +233,7 @@ prescriptionsRouter.post("/:id/approve", requireRole("doctor"), async (c) => {
         const { data: revData, error: revErr } = await admin
             .from("prescription_revisions")
             .insert({
-                prescription_id: prescriptionId,
+                prescription_id: actualPrescriptionId,
                 revised_by_profile_id: user.profileId,
                 changes: revisionChanges,
                 reason: validated.reason || "Doctor approved medication adjustments",
@@ -161,7 +257,7 @@ prescriptionsRouter.post("/:id/approve", requireRole("doctor"), async (c) => {
             patient_id: prescription.patient_id,
             workspace_id: patientWorkspaceId,
             trigger_type: "prescription_approval",
-            trigger_id: prescriptionId,
+            trigger_id: actualPrescriptionId,
             status: "running",
             correlation_id: correlationId,
             started_at: approvedAt,
@@ -240,12 +336,12 @@ prescriptionsRouter.post("/:id/approve", requireRole("doctor"), async (c) => {
         type: "generate_dose_schedule",
         idempotency_key: validated.idempotencyKey
             ? `gen-schedule-${validated.idempotencyKey}`
-            : `gen-schedule-${prescriptionId}-${Date.now()}`,
+            : `gen-schedule-${actualPrescriptionId}-${Date.now()}`,
         correlation_id: correlationId,
         pipeline_run_id: pipelineRunId,
         pipeline_stage_id: reminderStageId,
         payload: {
-            prescriptionId,
+            prescriptionId: actualPrescriptionId,
             patientId: prescription.patient_id,
             approvedBy: user.profileId,
         },
@@ -257,7 +353,7 @@ prescriptionsRouter.post("/:id/approve", requireRole("doctor"), async (c) => {
         actor_profile_id: user.profileId,
         action: "approve_prescription",
         target_type: "prescription",
-        target_id: prescriptionId,
+        target_id: actualPrescriptionId,
         correlation_id: correlationId,
         outcome: "success",
     });

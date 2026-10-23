@@ -155,23 +155,57 @@ export default function PrescriptionSuggestionCard({
 
             {expandedCitations[index] && (
               <div className="mt-3 space-y-2 animate-fade-in">
-                {medication.citations.map((citation) => (
-                  <div key={citation.id} className="border border-slate-100 rounded-lg p-3 bg-slate-50">
-                    <div className="flex items-start justify-between gap-2">
-                      <p className="text-xs font-medium text-slate-800">{citation.title}</p>
-                      <Badge variant={citation.type === "guideline" ? "outline" : "default"}>
-                        {citation.type === "guideline" ? "Guideline" : "Research"}
-                      </Badge>
-                    </div>
-                    <p className="text-xs text-slate-500 mt-0.5">{citation.publisher} · {citation.date}</p>
-                    <p className="text-xs text-slate-600 italic mt-1">{citation.relevanceNote}</p>
-                    {citation.evidenceId && (
-                      <p className="text-xs font-mono text-cyan-700 mt-2">
-                        Retrieved source: {citation.evidenceId}
-                      </p>
-                    )}
-                  </div>
-                ))}
+                {medication.citations && medication.citations.length > 0 ? (
+                  medication.citations.map((citation) => {
+                    const title = citation.title || citation.sourceLabel || "Clinical Evidence";
+                    const isGuideline = citation.type === "guideline" || citation.sourceTier === "external_mcp";
+                    const isPatientRecord = citation.sourceTier === "patient_record" || citation.type === "patient_record";
+                    const badgeText = isPatientRecord ? "Patient Record" : isGuideline ? "Guideline" : "Clinical Source";
+                    const publisherText = citation.publisher || (isPatientRecord ? "Patient Medical Record" : "Clinical Practice / OpenFDA");
+                    const dateText = citation.date || citation.publicationDate || "";
+                    const metaText = [publisherText, dateText].filter(Boolean).join(" · ");
+                    const noteText = citation.relevanceNote || citation.excerpt || "";
+
+                    return (
+                      <div key={citation.id} className="border border-slate-100 rounded-lg p-3 bg-slate-50">
+                        <div className="flex items-start justify-between gap-2">
+                          <p className="text-xs font-medium text-slate-800">{title}</p>
+                          <Badge variant={isGuideline ? "outline" : isPatientRecord ? "default" : "info"}>
+                            {badgeText}
+                          </Badge>
+                        </div>
+                        {metaText && <p className="text-xs text-slate-500 mt-0.5">{metaText}</p>}
+                        {noteText && <p className="text-xs text-slate-600 italic mt-1">{noteText}</p>}
+                        {(citation.url || citation.evidenceId) && (
+                          <div className="mt-2 flex items-center gap-2 text-xs flex-wrap">
+                            {citation.evidenceId && (
+                              <span className="font-mono text-cyan-700">
+                                Source: {citation.evidenceId}
+                              </span>
+                            )}
+                            {citation.url && (
+                              <a
+                                href={citation.url}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-cyan-600 hover:underline flex items-center gap-1 font-medium"
+                              >
+                                View Evidence
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width={10} height={10}>
+                                  <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                                  <polyline points="15 3 21 3 21 9" />
+                                  <line x1="10" y1="14" x2="21" y2="3" />
+                                </svg>
+                              </a>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })
+                ) : (
+                  <p className="text-xs text-slate-400 italic p-2">No evidence citations attached.</p>
+                )}
               </div>
             )}
           </div>

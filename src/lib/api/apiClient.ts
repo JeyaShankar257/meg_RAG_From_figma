@@ -15,6 +15,7 @@ import type {
   DoctorSettingsResponse,
   DoctorProfilePreferences,
   ApprovalResponse,
+  PrescriptionRevision,
   PatientDailyDoseSchedule,
   PatientAdherenceSummary,
   PatientTransparencyResponse,
@@ -110,9 +111,12 @@ function normalizeVisit(visit: Record<string, unknown>): Visit {
 function normalizePrescription(
   prescription: Record<string, unknown>,
 ): Prescription {
-  const medication = (prescription.medications ??
+  const snapshot = (prescription.ai_suggestion_snapshot ?? {}) as Record<string, unknown>
+  const rawMed = (prescription.medications ??
     prescription.medication ??
+    snapshot ??
     {}) as Record<string, unknown>
+  const medication = Array.isArray(rawMed) && rawMed.length > 0 ? (rawMed[0] as Record<string, unknown>) : rawMed
   const status = String(prescription.status ?? "pending_review")
   return {
     id: String(prescription.id ?? crypto.randomUUID()),
@@ -122,19 +126,19 @@ function normalizePrescription(
     suggestedBy: prescription.suggested_by === "ai" ? "ai" : "doctor",
     approvedBy: String(prescription.approved_by_profile_id ?? ""),
     approvedAt: String(prescription.approved_at ?? ""),
-    citations: [],
-    revisions: [],
+    citations: Array.isArray(prescription.citations) ? (prescription.citations as any) : [],
+    revisions: Array.isArray(prescription.revisions) ? (prescription.revisions as any) : [],
     medication: {
-      id: String(medication.id ?? ""),
-      name: String(medication.name ?? "Medication"),
-      genericName: String(medication.generic_name ?? ""),
-      strength: String(medication.dosage ?? medication.strength ?? ""),
-      unit: String(medication.unit ?? ""),
-      frequency: String(medication.frequency ?? medication.form ?? ""),
-      quantity: Number(medication.quantity ?? 0),
-      duration: String(medication.duration ?? ""),
-      instructions: String(medication.instructions ?? ""),
-      startDate: String(medication.start_date ?? ""),
+      id: String(medication.id ?? snapshot.id ?? ""),
+      name: String(medication.name ?? snapshot.name ?? "Medication"),
+      genericName: String(medication.generic_name ?? snapshot.genericName ?? ""),
+      strength: String(medication.dosage ?? medication.strength ?? snapshot.strength ?? ""),
+      unit: String(medication.unit ?? snapshot.unit ?? ""),
+      frequency: String(medication.frequency ?? medication.form ?? snapshot.frequency ?? ""),
+      quantity: Number(medication.quantity ?? snapshot.quantity ?? 0),
+      duration: String(medication.duration ?? (snapshot.days ? `${snapshot.days} days` : "")),
+      instructions: String(medication.instructions ?? snapshot.instructions ?? ""),
+      startDate: String(medication.start_date ?? medication.prescribed_at ?? new Date().toISOString().slice(0, 10)),
       endDate: String(medication.end_date ?? ""),
       status: "active",
       prescribedBy: String(medication.prescribed_by ?? ""),
@@ -689,6 +693,7 @@ export const api = {
     approve: (
       id: string,
       payload?: {
+        patientId?: string
         idempotencyKey?: string
         suggestion?: unknown
         editedValues?: Record<string, unknown>
@@ -698,10 +703,22 @@ export const api = {
       },
     ) =>
       isBackendConfigured()
-        ? request<ApprovalResponse>(`/prescriptions/${id}/approve`, {
+        ? request<{
+            success: boolean
+            prescription: Record<string, unknown>
+            revision?: PrescriptionRevision | null
+            pipelineRunId?: string
+            correlationId?: string
+            message?: string
+          }>(`/prescriptions/${id}/approve`, {
             method: "POST",
             body: JSON.stringify(payload ?? {}),
-          })
+          }).then((res) => ({
+            ...res,
+            prescription: res.prescription
+              ? normalizePrescription(res.prescription)
+              : (res.prescription as unknown as Prescription),
+          }))
         : Promise.resolve<ApprovalResponse>({
             success: true,
             prescription: {

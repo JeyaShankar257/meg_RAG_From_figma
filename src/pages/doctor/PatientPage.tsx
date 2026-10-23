@@ -188,6 +188,7 @@ export default function PatientPage() {
           const res = await api.prescriptions.approve(
             (medication as any).prescriptionId || `rx-ai-${patient.id}-${index}`,
             {
+              patientId: patient.id,
               idempotencyKey,
               suggestion: medication,
               editedValues: {
@@ -212,6 +213,13 @@ export default function PatientPage() {
         setTimeout(() => setApproveToast(false), 4000);
         setTimeout(() => setJustApprovedIds(new Set()), 3500);
         setActiveTab("Prescription");
+
+        // Background sync to ensure full joined DB records
+        void api.patients.getPrescriptions(patient.id).then((fresh) => {
+          if (Array.isArray(fresh?.prescriptions) && fresh.prescriptions.length > 0) {
+            setPrescriptions(fresh.prescriptions as Prescription[]);
+          }
+        });
       } catch (err: any) {
         // Clinical safety: failed approval leaves local prescriptions unchanged!
         setApproveError(err?.message || "Failed to approve prescription on server. Please try again.");

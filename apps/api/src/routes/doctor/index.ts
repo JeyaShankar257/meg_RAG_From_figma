@@ -302,7 +302,7 @@ doctorRouter.post(
         const isAceInhibitorCase = queryMentionsCoughOrAce && (patientTakesLisinopril || /cough/i.test(symptoms));
 
         const patientReportEvidence = evidence.filter(
-            (e) => e.sourceTier === "patient_record" || e.sourceType === "patient_report" || e.sourceType === "lab_result",
+            (e) => e.sourceTier === "patient_record" || (e.sourceType as string) === "patient_report" || (e.sourceType as string) === "lab_result",
         );
         const guidelineEvidence = evidence.filter(
             (e) => e.sourceTier === "external_mcp" || e.sourceType === "guideline",
@@ -426,6 +426,11 @@ doctorRouter.post(
             publicationDate: e.date,
             url: e.url,
             sourceTier: e.sourceTier || (e.sourceType.startsWith("patient_") ? "patient_record" : "external_mcp"),
+            title: e.title,
+            publisher: e.sourceType.startsWith("patient_") ? "Patient Medical Record" : "Clinical Practice / OpenFDA",
+            date: e.date,
+            relevanceNote: e.excerpt,
+            type: e.sourceTier === "patient_record" || e.sourceType.startsWith("patient_") ? "other" : "guideline",
         }));
 
         // Drug interaction safety check via OpenFDA MCP tool (Task 1.2 & 2.1)
