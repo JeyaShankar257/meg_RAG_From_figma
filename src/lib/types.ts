@@ -40,6 +40,7 @@ export interface Visit {
   outcome: string;
   relatedVisits?: string[];
   doctor: string;
+  prescriptionId?: string;
 }
 
 export interface Medication {
@@ -423,6 +424,7 @@ export interface ApprovalRequest {
 export interface ApprovalResponse {
   success: boolean;
   prescription: Prescription;
+  visit?: Visit;
   revision?: PrescriptionRevision;
   pipelineRunId?: string;
   correlationId: string;

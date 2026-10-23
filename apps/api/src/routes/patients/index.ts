@@ -457,7 +457,7 @@ patientsRouter.get("/:id/visits", async (c) => {
     const admin = getAdminClient();
     const { data: visits, error } = await admin
         .from("visits")
-        .select("*")
+        .select("*, profiles:doctor_profile_id(full_name)")
         .eq("patient_id", patientId)
         .order("visit_date", { ascending: false });
 

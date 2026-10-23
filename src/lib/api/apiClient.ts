@@ -90,11 +90,15 @@ export function normalizePatient(patient: ApiPatient): Patient {
 }
 
 function normalizeVisit(visit: Record<string, unknown>): Visit {
+  const doctor =
+    (visit.profiles as any)?.full_name ||
+    visit.doctor ||
+    DEMO_DOCTOR.name
   return {
     id: String(visit.id ?? crypto.randomUUID()),
     patientId: String(visit.patient_id ?? visit.patientId ?? ""),
-    date: String(visit.visit_date ?? visit.date ?? ""),
-    condition: String(visit.condition ?? "Clinical visit"),
+    date: String(visit.visit_date ?? visit.date ?? new Date().toISOString().slice(0, 10)),
+    condition: String(visit.condition ?? "Clinical Consultation"),
     symptoms: Array.isArray(visit.symptoms) ? visit.symptoms.map(String) : [],
     notes: String(visit.notes ?? ""),
     proposedSolution: String(
@@ -104,7 +108,8 @@ function normalizeVisit(visit: Record<string, unknown>): Visit {
     relatedVisits: Array.isArray(visit.related_visits)
       ? visit.related_visits.map(String)
       : [],
-    doctor: String(visit.doctor ?? ""),
+    doctor: String(doctor),
+    prescriptionId: visit.prescription_id ? String(visit.prescription_id) : undefined,
   }
 }
 
@@ -700,12 +705,20 @@ export const api = {
         changes?: Record<string, unknown>
         reason?: string
         medication?: Record<string, unknown>
+        visit?: {
+          condition?: string
+          symptoms?: string[]
+          notes?: string
+          proposedSolution?: string
+          outcome?: string
+        }
       },
     ) =>
       isBackendConfigured()
         ? request<{
             success: boolean
             prescription: Record<string, unknown>
+            visit?: Record<string, unknown>
             revision?: PrescriptionRevision | null
             pipelineRunId?: string
             correlationId?: string
@@ -718,6 +731,7 @@ export const api = {
             prescription: res.prescription
               ? normalizePrescription(res.prescription)
               : (res.prescription as unknown as Prescription),
+            visit: res.visit ? normalizeVisit(res.visit) : undefined,
           }))
         : Promise.resolve<ApprovalResponse>({
             success: true,
@@ -744,6 +758,17 @@ export const api = {
                 status: "active",
                 prescribedBy: DEMO_DOCTOR.name,
               },
+            },
+            visit: {
+              id: `v-demo-${Date.now()}`,
+              patientId: payload?.patientId || "p-001",
+              date: new Date().toISOString().slice(0, 10),
+              condition: payload?.visit?.condition || "Clinical Consultation & Prescribing",
+              symptoms: payload?.visit?.symptoms || ["Headache"],
+              notes: payload?.visit?.notes || "Doctor approved prescription",
+              proposedSolution: payload?.visit?.proposedSolution || "Initiated medication",
+              outcome: payload?.visit?.outcome || "Prescription approved",
+              doctor: DEMO_DOCTOR.name,
             },
             correlationId: `corr-demo-${Date.now()}`,
           }),

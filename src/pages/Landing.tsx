@@ -72,11 +72,10 @@ export default function Landing() {
         {/* Animated medical cross */}
         <div className="relative mb-10 flex items-center justify-center">
           <div
-            className={`w-20 h-20 rounded-2xl bg-teal-500/20 border border-teal-500/30 flex items-center justify-center transition-all duration-700 ${
-              pulse
+            className={`w-20 h-20 rounded-2xl bg-teal-500/20 border border-teal-500/30 flex items-center justify-center transition-all duration-700 ${pulse
                 ? "shadow-[0_0_30px_rgba(20,184,166,0.3)]"
                 : "shadow-[0_0_10px_rgba(20,184,166,0.1)]"
-            }`}
+              }`}
           >
             <svg
               viewBox="0 0 24 24"

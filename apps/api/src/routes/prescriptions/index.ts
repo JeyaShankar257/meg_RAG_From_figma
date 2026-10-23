@@ -41,6 +41,15 @@ const approvePrescriptionSchema = z.object({
     changes: z.record(z.unknown()).optional(),
     reason: z.string().optional(),
     medication: z.record(z.unknown()).optional(),
+    visit: z
+        .object({
+            condition: z.string().optional(),
+            symptoms: z.array(z.string()).optional(),
+            notes: z.string().optional(),
+            proposedSolution: z.string().optional(),
+            outcome: z.string().optional(),
+        })
+        .optional(),
 });
 
 // ─── POST /prescriptions/:id/approve ──────────────────────────────────────────
@@ -358,13 +367,91 @@ prescriptionsRouter.post("/:id/approve", requireRole("doctor"), async (c) => {
         outcome: "success",
     });
 
+    // 9. Automatically record clinical Visit encounter reflecting this prescription consultation
+    let createdVisit: any = null;
+    try {
+        const medName = String(
+            validated.editedValues?.name ||
+            validated.suggestion?.name ||
+            (prescription.medications as any)?.name ||
+            "Medication",
+        );
+        const medDosage = String(
+            validated.editedValues?.dosage ||
+            validated.editedValues?.strength ||
+            validated.suggestion?.strength ||
+            (prescription.medications as any)?.dosage ||
+            "",
+        );
+        const medFrequency = String(
+            validated.editedValues?.frequency ||
+            validated.suggestion?.frequency ||
+            (prescription.medications as any)?.form ||
+            "",
+        );
+        const medInstructions = String(
+            validated.editedValues?.instructions ||
+            validated.suggestion?.instructions ||
+            "",
+        );
+        const medDays = validated.editedValues?.days || validated.suggestion?.days || 30;
+
+        const visitCondition =
+            validated.visit?.condition ||
+            (validated.suggestion?.reasoning
+                ? validated.suggestion.reasoning.split(".")[0].slice(0, 80)
+                : `Prescription Consultation: ${medName}`);
+
+        const visitSymptoms =
+            validated.visit?.symptoms && validated.visit.symptoms.length > 0
+                ? validated.visit.symptoms
+                : [medName];
+
+        const visitNotes =
+            validated.visit?.notes ||
+            `Clinical encounter and medication review. Doctor approved ${medName} ${medDosage} (${medFrequency}). ${validated.suggestion?.reasoning || validated.reason || "Safety check and contraindications evaluated."}`;
+
+        const visitProposedSolution =
+            validated.visit?.proposedSolution ||
+            `Initiated ${medName} ${medDosage} ${medFrequency ? `(${medFrequency})` : ""}${medInstructions ? `. Instructions: ${medInstructions}` : ""}. Duration: ${medDays} days.`;
+
+        const visitOutcome =
+            validated.visit?.outcome ||
+            "Prescription approved and dose schedule generated. Active adherence monitoring initiated.";
+
+        const { data: vRecord, error: vErr } = await admin
+            .from("visits")
+            .insert({
+                patient_id: prescription.patient_id,
+                doctor_profile_id: user.profileId,
+                visit_date: approvedAt.slice(0, 10),
+                condition: visitCondition,
+                symptoms: visitSymptoms,
+                notes: visitNotes,
+                proposed_solution: visitProposedSolution,
+                outcome: visitOutcome,
+                prescription_id: actualPrescriptionId,
+            })
+            .select("*, profiles:doctor_profile_id(full_name)")
+            .single();
+
+        if (!vErr && vRecord) {
+            createdVisit = vRecord;
+        } else if (vErr) {
+            console.warn("[prescriptionApproval] Optional visit auto-creation notice:", vErr.message);
+        }
+    } catch (visitError) {
+        console.warn("[prescriptionApproval] Error during auto-visit creation:", visitError);
+    }
+
     return c.json({
         success: true,
         prescription: updatedPrescription,
+        visit: createdVisit,
         revision,
         pipelineRunId,
         correlationId,
-        message: "Prescription approved and downstream schedule generation queued",
+        message: "Prescription approved, clinical visit documented, and downstream schedule generation queued",
     });
 });
 

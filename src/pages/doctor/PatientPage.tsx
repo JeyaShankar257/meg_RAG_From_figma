@@ -8,6 +8,7 @@ import type {
   PatientUploadedReport,
   Prescription,
   RagAnalysisResponse,
+  Visit,
 } from "../../lib/types";
 import {
   formatFileSize,
@@ -182,6 +183,7 @@ export default function PatientPage() {
     if (isBackendConfigured()) {
       try {
         const approvedList: Prescription[] = [];
+        const createdVisits: Visit[] = [];
         for (let index = 0; index < editedMeds.length; index++) {
           const medication = editedMeds[index];
           const idempotencyKey = `idem-${patient.id}-${Date.now()}-${index}`;
@@ -200,13 +202,27 @@ export default function PatientPage() {
                 instructions: medication.instructions,
               },
               reason: "Doctor approved AI suggestion",
+              visit: {
+                condition: aiResult?.hypothesis || patient.conditions?.[0] || `Prescription: ${medication.name}`,
+                symptoms: patient.conditions && patient.conditions.length > 0 ? patient.conditions : [medication.name],
+                notes: `Clinical evaluation and medication review. Doctor approved ${medication.name} ${medication.strength} (${medication.frequency}). ${medication.reasoning || ""}`.trim(),
+                proposedSolution: `Initiated ${medication.name} ${medication.strength} (${medication.frequency}) for ${medication.days} days. ${medication.instructions || ""}`.trim(),
+                outcome: "Prescription approved and dose schedule generated. Active adherence monitoring initiated.",
+              },
             }
           );
           if (res.prescription) {
             approvedList.push(res.prescription);
           }
+          if (res.visit) {
+            createdVisits.push(res.visit);
+          }
         }
         setPrescriptions((previous) => [...approvedList, ...previous]);
+        if (createdVisits.length > 0) {
+          setVisits((prev) => [...createdVisits, ...prev.filter((v) => !createdVisits.some((cv) => cv.id === v.id))]);
+        }
+        setPatient((prev) => prev ? ({ ...prev, lastVisit: approvedAt.toISOString().slice(0, 10) }) : prev);
         const newIds = new Set(editedMeds.map((m) => m.name));
         setJustApprovedIds(newIds);
         setApproveToast(true);
@@ -218,6 +234,11 @@ export default function PatientPage() {
         void api.patients.getPrescriptions(patient.id).then((fresh) => {
           if (Array.isArray(fresh?.prescriptions) && fresh.prescriptions.length > 0) {
             setPrescriptions(fresh.prescriptions as Prescription[]);
+          }
+        });
+        void api.patients.getVisits(patient.id).then((fresh) => {
+          if (Array.isArray(fresh?.visits) && fresh.visits.length > 0) {
+            setVisits(fresh.visits);
           }
         });
       } catch (err: any) {
@@ -258,7 +279,21 @@ export default function PatientPage() {
         },
       };
     });
+    const newDemoVisits: Visit[] = editedMeds.map((medication, index) => ({
+      id: `v-demo-${approvedAt.getTime()}-${index}`,
+      patientId: patient.id,
+      date: approvedAt.toISOString().slice(0, 10),
+      condition: aiResult?.hypothesis || patient.conditions?.[0] || `Prescription: ${medication.name}`,
+      symptoms: patient.conditions && patient.conditions.length > 0 ? patient.conditions : [medication.name],
+      notes: `Clinical evaluation and prescribing. Doctor approved ${medication.name} ${medication.strength} (${medication.frequency}). ${medication.reasoning || ""}`.trim(),
+      proposedSolution: `Initiated ${medication.name} ${medication.strength} (${medication.frequency}) for ${medication.days} days. ${medication.instructions || ""}`.trim(),
+      outcome: "Prescription approved and dose schedule generated. Active adherence monitoring initiated.",
+      doctor: "Dr. Jeya Shankar M",
+      prescriptionId: `rx-ai-${approvedAt.getTime()}-${index}`,
+    }));
     setPrescriptions((previous) => [...newPrescriptions, ...previous]);
+    setVisits((previous) => [...newDemoVisits, ...previous]);
+    setPatient((prev) => prev ? ({ ...prev, lastVisit: approvedAt.toISOString().slice(0, 10) }) : prev);
     const newIds = new Set(editedMeds.map((m) => m.name));
     setJustApprovedIds(newIds);
     sessionStorage.setItem("pipeline_triggered", "true");
@@ -646,6 +681,11 @@ export default function PatientPage() {
                           <div className="flex items-center gap-2 flex-wrap">
                             <span className="text-xs font-mono text-slate-400">{visit.date}</span>
                             {i === 0 && <Badge variant="success" size="sm">Latest</Badge>}
+                            {(visit.prescriptionId || visit.proposedSolution?.toLowerCase().includes("prescrib") || visit.proposedSolution?.toLowerCase().includes("initiat")) && (
+                              <Badge variant="ai" size="sm">
+                                💊 Prescription Encounter
+                              </Badge>
+                            )}
                           </div>
                           <h3 className="text-sm font-semibold text-slate-900 mt-0.5">{visit.condition}</h3>
                           <div className="flex gap-1.5 mt-1.5 flex-wrap">
@@ -1048,7 +1088,9 @@ export default function PatientPage() {
 
             <div className="bg-amber-50 border border-amber-100 rounded-lg p-3 text-xs text-amber-700 mb-5 flex items-start gap-2">
               <svg viewBox="0 0 24 24" className="fill-amber-500 flex-shrink-0 mt-0.5" width={12} height={12}><path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/></svg>
-              Approving will save {editedMeds.length} prescription{editedMeds.length !== 1 ? "s" : ""}, generate dose schedule slots via the Reminder Agent, and activate the care team pipeline.
+              <span>
+                Approving will save {editedMeds.length} prescription{editedMeds.length !== 1 ? "s" : ""}, <strong>automatically record a clinical encounter in the Visit Timeline</strong>, generate dose schedule slots via the Reminder Agent, and activate the care team pipeline.
+              </span>
             </div>
 
             <div className="flex gap-3">
@@ -1065,7 +1107,7 @@ export default function PatientPage() {
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width={16} height={16}>
             <path d="M9 11l3 3L22 4" strokeLinecap="round" strokeLinejoin="round"/>
           </svg>
-          Prescription approved. Dose schedule generation triggered.
+          Prescription approved &amp; Visit encounter recorded.
         </div>
       )}
 
