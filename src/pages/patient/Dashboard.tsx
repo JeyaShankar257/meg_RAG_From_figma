@@ -23,7 +23,6 @@ type AdherenceSummary = {
   score: number;
   trend: "up" | "down" | "stable";
   taken: number;
-  late: number;
   skipped: number;
   missed: number;
   currentStreakDays: number;
@@ -37,8 +36,7 @@ export default function PatientDashboard() {
   const [adherence, setAdherence] = useState<AdherenceSummary>({
     score: 93,
     trend: "up",
-    taken: 38,
-    late: 3,
+    taken: 41,
     skipped: 1,
     missed: 2,
     currentStreakDays: 14,
@@ -78,8 +76,7 @@ export default function PatientDashboard() {
         setAdherence({
           score: adherenceResult.score,
           trend: adherenceResult.trend,
-          taken: adherenceResult.takenCount,
-          late: adherenceResult.lateCount ?? 0,
+          taken: adherenceResult.takenCount + (adherenceResult.lateCount ?? 0),
           skipped: adherenceResult.skippedCount ?? 0,
           missed: adherenceResult.missedCount,
           currentStreakDays: adherenceResult.currentStreakDays,
@@ -125,21 +122,16 @@ export default function PatientDashboard() {
         </Button>
       </div>
 
-      {/* Stats row */}
-      <div className="grid grid-cols-3 gap-3">
+      {/* Stats row - Clean Binary Adherence */}
+      <div className="grid grid-cols-2 gap-3">
         <Card padding="sm">
-          <div className="text-lg font-bold text-emerald-600">{adherence.taken}</div>
-          <div className="text-xs text-slate-500 mt-0.5">Taken</div>
+          <div className="text-2xl font-bold text-emerald-600">{adherence.taken}</div>
+          <div className="text-xs font-medium text-slate-700 mt-0.5">Doses Taken</div>
           <div className="text-[10px] text-slate-400">Last 30 days</div>
         </Card>
         <Card padding="sm">
-          <div className="text-lg font-bold text-amber-500">{adherence.late}</div>
-          <div className="text-xs text-slate-500 mt-0.5">Late</div>
-          <div className="text-[10px] text-slate-400">Last 30 days</div>
-        </Card>
-        <Card padding="sm">
-          <div className="text-lg font-bold text-rose-500">{adherence.missed}</div>
-          <div className="text-xs text-slate-500 mt-0.5">Missed</div>
+          <div className="text-2xl font-bold text-rose-500">{adherence.missed + adherence.skipped}</div>
+          <div className="text-xs font-medium text-slate-700 mt-0.5">Missed / Skipped</div>
           <div className="text-[10px] text-slate-400">Last 30 days</div>
         </Card>
       </div>

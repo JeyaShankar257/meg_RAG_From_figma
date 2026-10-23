@@ -356,6 +356,46 @@ prescriptionsRouter.post("/:id/approve", requireRole("doctor"), async (c) => {
         },
     });
 
+    // 7b. Immediately generate 30 days of dose schedule entries so the Patient Portal has instant dose tracking
+    try {
+        const formLower = String(
+            validated.editedValues?.frequency ||
+            validated.suggestion?.frequency ||
+            (prescription.medications as any)?.form ||
+            ""
+        ).toLowerCase();
+
+        const hours = (formLower.includes("twice") || formLower.includes("bid") || formLower.includes("4 to 6") || formLower.includes("12 hour"))
+            ? [8, 19]
+            : (formLower.includes("three") || formLower.includes("tid") || formLower.includes("8 hour"))
+            ? [8, 14, 20]
+            : [9];
+
+        const startDate = new Date();
+        startDate.setUTCHours(9, 0, 0, 0);
+
+        const scheduleRows: any[] = [];
+        for (let day = 0; day < 30; day++) {
+            const dayBase = new Date(startDate.getTime() + day * 24 * 60 * 60 * 1000);
+            for (const h of hours) {
+                const scheduledTime = new Date(dayBase);
+                scheduledTime.setUTCHours(h, 0, 0, 0);
+                scheduleRows.push({
+                    prescription_id: actualPrescriptionId,
+                    patient_id: prescription.patient_id,
+                    scheduled_at: scheduledTime.toISOString(),
+                    window_minutes: 60,
+                });
+            }
+        }
+
+        if (scheduleRows.length > 0) {
+            await admin.from("dose_schedules").insert(scheduleRows);
+        }
+    } catch (schedGenErr) {
+        console.warn("Direct dose schedule generation encountered error:", schedGenErr);
+    }
+
     // 8. Record immutable audit event
     await admin.from("audit_events").insert({
         workspace_id: user.workspaceId,

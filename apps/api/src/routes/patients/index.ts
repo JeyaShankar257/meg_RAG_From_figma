@@ -508,7 +508,7 @@ patientsRouter.get("/:id/dose-schedules", async (c) => {
     const dayStart = `${dateParam}T00:00:00.000Z`;
     const dayEnd = `${dateParam}T23:59:59.999Z`;
 
-    const { data: schedules, error: schedError } = await admin
+    let { data: schedules, error: schedError } = await admin
         .from("dose_schedules")
         .select(`
             id,
@@ -531,6 +531,82 @@ patientsRouter.get("/:id/dose-schedules", async (c) => {
 
     if (schedError) {
         throw ApiError.internal("Failed to retrieve dose schedules", schedError.message);
+    }
+
+    // Self-healing: verify active approved prescriptions have dose_schedules for target date
+    try {
+        const { data: approvedPrescriptions } = await admin
+            .from("prescriptions")
+            .select(`
+                id,
+                patient_id,
+                medications (
+                    name,
+                    dosage,
+                    form
+                )
+            `)
+            .eq("patient_id", patientId)
+            .eq("status", "approved");
+
+        const existingPrescriptionIds = new Set((schedules || []).map((s: any) => s.prescription_id));
+        const missingPrescriptions = (approvedPrescriptions || []).filter(
+            (p: any) => !existingPrescriptionIds.has(p.id),
+        );
+
+        if (missingPrescriptions.length > 0) {
+            const newSlots: any[] = [];
+            for (const p of missingPrescriptions) {
+                const formLower = String((p.medications as any)?.form || "").toLowerCase();
+                const hours = (formLower.includes("twice") || formLower.includes("bid") || formLower.includes("4 to 6") || formLower.includes("12 hour"))
+                    ? [8, 19]
+                    : (formLower.includes("three") || formLower.includes("tid") || formLower.includes("8 hour"))
+                    ? [8, 14, 20]
+                    : [9];
+
+                for (const h of hours) {
+                    const slotDate = new Date(`${dateParam}T00:00:00.000Z`);
+                    slotDate.setUTCHours(h, 0, 0, 0);
+                    newSlots.push({
+                        prescription_id: p.id,
+                        patient_id: patientId,
+                        scheduled_at: slotDate.toISOString(),
+                        window_minutes: 60,
+                    });
+                }
+            }
+
+            if (newSlots.length > 0) {
+                await admin.from("dose_schedules").insert(newSlots);
+
+                const { data: refreshedSchedules } = await admin
+                    .from("dose_schedules")
+                    .select(`
+                        id,
+                        patient_id,
+                        prescription_id,
+                        scheduled_at,
+                        window_minutes,
+                        prescriptions (
+                            id,
+                            medications (
+                                name,
+                                dosage
+                            )
+                        )
+                    `)
+                    .eq("patient_id", patientId)
+                    .gte("scheduled_at", dayStart)
+                    .lte("scheduled_at", dayEnd)
+                    .order("scheduled_at", { ascending: true });
+
+                if (refreshedSchedules && refreshedSchedules.length > 0) {
+                    schedules = refreshedSchedules;
+                }
+            }
+        }
+    } catch (healErr) {
+        console.warn("Self-healing dose schedule query failed gracefully:", healErr);
     }
 
     // Query corresponding dose logs
