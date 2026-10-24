@@ -223,7 +223,17 @@ export default function CareTeamPage() {
   const selectedStage =
     pipelineStages.find((s) => s.agentName === selectedStageKey) ||
     pipelineStages[1] ||
-    pipelineStages[0]
+    pipelineStages[0] || {
+      id: "stage-default",
+      name: "Pipeline Stage",
+      agentName: "pattern_detection_agent",
+      description: "",
+      status: "idle" as const,
+      logs: [],
+    }
+
+  const patientDisplayName = patient?.name || (patient as any)?.full_name || "Patient"
+  const patientIdDisplay = patient?.patientId || patient?.id || patientId
 
   return (
     <div className="p-6 max-w-6xl space-y-6 animate-fade-in">
@@ -246,15 +256,15 @@ export default function CareTeamPage() {
         <div>
           <div className="flex items-center gap-2 mb-1">
             <Link
-              to={`/doctor/patients/${patient.id}`}
+              to={`/doctor/patients/${patient?.id || patientId}`}
               className="text-sm text-teal-600 hover:text-teal-700 font-medium inline-flex items-center gap-1"
             >
-              ← Back to {patient.name || (patient as any).full_name}
+              ← Back to {patientDisplayName}
             </Link>
           </div>
           <h1 className="text-2xl font-bold text-slate-900">Care Team Command Center</h1>
           <p className="text-slate-500 text-sm mt-0.5">
-            Patient ID: <span className="font-mono font-medium text-slate-700">{patient.patientId || patient.id}</span> · 4-Stage Closed-Loop Adherence Pipeline
+            Patient ID: <span className="font-mono font-medium text-slate-700">{patientIdDisplay}</span> · 4-Stage Closed-Loop Adherence Pipeline
           </p>
         </div>
 
@@ -351,16 +361,16 @@ export default function CareTeamPage() {
                   </p>
 
                   {/* Guardian Emergency Contact Display for SOS */}
-                  {((patient as any).guardian_name || (patient as any).guardian_email) && (
+                  {((patient as any)?.guardian_name || (patient as any)?.guardian_email) && (
                     <div className="mt-2.5 p-2.5 rounded-xl bg-white/80 border border-rose-200 text-xs text-rose-950 flex items-center gap-2">
                       <span className="font-semibold text-rose-700">Emergency Guardian:</span>
-                      <span>{(patient as any).guardian_name || "Primary Caregiver"}</span>
+                      <span>{(patient as any)?.guardian_name || "Primary Caregiver"}</span>
                       <span>·</span>
-                      <span className="font-mono text-rose-800 font-medium">{(patient as any).guardian_email}</span>
-                      {(patient as any).guardian_phone && (
+                      <span className="font-mono text-rose-800 font-medium">{(patient as any)?.guardian_email}</span>
+                      {(patient as any)?.guardian_phone && (
                         <>
                           <span>·</span>
-                          <span>{(patient as any).guardian_phone}</span>
+                          <span>{(patient as any)?.guardian_phone}</span>
                         </>
                       )}
                       <span className="ml-auto text-[11px] bg-rose-100 text-rose-800 px-2 py-0.5 rounded font-semibold">
@@ -609,21 +619,28 @@ export default function CareTeamPage() {
             <CardTitle>Assigned Care Team</CardTitle>
           </CardHeader>
           <div className="space-y-3">
-            {careTeam.map((m) => (
-              <div key={m.id} className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-full bg-teal-100 flex items-center justify-center text-teal-800 font-bold text-xs flex-shrink-0">
-                  {m.name
-                    .split(" ")
-                    .map((n: string) => n[0])
-                    .join("")
-                    .slice(0, 2)}
+            {careTeam.map((m: any) => {
+              const memberName = m.name || m.full_name || m.email || "Care Team Member"
+              const initials = memberName
+                .split(" ")
+                .filter(Boolean)
+                .map((n: string) => n[0])
+                .join("")
+                .slice(0, 2)
+                .toUpperCase() || "CM"
+
+              return (
+                <div key={m.id} className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-full bg-teal-100 flex items-center justify-center text-teal-800 font-bold text-xs flex-shrink-0">
+                    {initials}
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-slate-800">{memberName}</p>
+                    <p className="text-xs text-slate-500">{m.role || "Care Team"}</p>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-sm font-semibold text-slate-800">{m.name}</p>
-                  <p className="text-xs text-slate-500">{m.role}</p>
-                </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
         </Card>
       </div>
