@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import nodemailer from "nodemailer";
 import type { DurableJob } from "../queue/durableQueue.js";
 import type { AgentJob, AgentResult } from "@mednova/contracts";
 
@@ -113,12 +114,34 @@ export async function processSendReminder(
         }
     }
 
-    // 2. Deliver via Resend (or captured mock in dev/demo)
-    let providerMessageId = `mock_resend_${Date.now()}`;
-    if (resendClient && process.env["DEMO_MODE"] !== "true") {
+    // 2. Deliver via Nodemailer SMTP or Resend (or captured mock in dev/demo)
+    let providerMessageId = `mock_email_${Date.now()}`;
+    const smtpUser = process.env["SMTP_USER"];
+    const smtpPass = (process.env["SMTP_PASS"] || "").replace(/\s+/g, "");
+
+    if (smtpUser && smtpPass && process.env["DEMO_MODE"] !== "true") {
+        try {
+            const transporter = nodemailer.createTransport({
+                host: process.env["SMTP_HOST"] || "smtp.gmail.com",
+                port: Number(process.env["SMTP_PORT"] || 465),
+                secure: process.env["SMTP_SECURE"] !== "false",
+                auth: { user: smtpUser, pass: smtpPass },
+            });
+            const sender = process.env["EMAIL_FROM"] || `MedNova Reminders <${smtpUser}>`;
+            const info = await transporter.sendMail({
+                from: sender,
+                to: job.payload.email || smtpUser,
+                subject: "Medication Reminder — MedNova",
+                text: message || "It is time to take your scheduled medication.",
+            });
+            providerMessageId = info.messageId;
+        } catch (err: any) {
+            console.warn(`[WORKER NODEMAILER WARNING] ${err.message}`);
+        }
+    } else if (resendClient && process.env["DEMO_MODE"] !== "true") {
         try {
             const result = await resendClient.emails.send({
-                from: "reminders@mednova.clinic",
+                from: process.env["RESEND_FROM_ADDRESS"] || "onboarding@resend.dev",
                 to: job.payload.email || "patient@example.com",
                 subject: "Medication Reminder — MedNova",
                 text: message || "It is time to take your scheduled medication.",
