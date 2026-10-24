@@ -33,9 +33,14 @@ import {
     type PipelineLogLevel,
     type PipelineRunStatus,
     PIPELINE_STAGE_DISPLAY,
+    CANONICAL_4_STAGES,
     type DoctorSettingsResponse,
     type DoctorProfilePreferences,
 } from "@mednova/types";
+import {
+    evaluateDailyPatternForPatient,
+    respondToEscalation,
+} from "../../services/adherencePipelineService.js";
 
 export const doctorRouter = new Hono();
 doctorRouter.use("*", authMiddleware);
@@ -1183,13 +1188,16 @@ const getPipelineHandler = async (c: any) => {
         }
     }
 
-    const stageOrder: PipelineStageKey[] = [
-        "reminder_agent",
-        "dose_logging_agent",
-        "pattern_detection_agent",
-        "escalation_agent",
-        "care_team_interaction_agent",
-    ];
+    const has4StageModel = stagesList.some((s: any) => s.stage_key === "patient_warning_agent" || s.stage_key === "sos_agent");
+    const stageOrder: PipelineStageKey[] = has4StageModel
+        ? CANONICAL_4_STAGES
+        : [
+            "reminder_agent",
+            "dose_logging_agent",
+            "pattern_detection_agent",
+            "escalation_agent",
+            "care_team_interaction_agent",
+        ];
 
     const stagesWithLogs: PipelineStageWithLogs[] = stageOrder
         .map((key) => stagesList.find((s: any) => s.stage_key === key))
@@ -1232,6 +1240,133 @@ const getPipelineHandler = async (c: any) => {
 
 doctorRouter.get("/patients/:patientId/pipeline", requireRole("doctor", "admin"), getPipelineHandler);
 doctorRouter.get("/pipeline/:patientId", requireRole("doctor", "admin"), getPipelineHandler);
+
+/**
+ * POST /doctor/patients/:patientId/evaluate-daily-pattern (Task 2.1 - 2.3)
+ * Triggers end-of-day daily pattern evaluation or on-demand check for the 4-tier closed-loop pipeline.
+ */
+doctorRouter.post(
+    "/patients/:patientId/evaluate-daily-pattern",
+    requireRole("doctor", "admin"),
+    async (c) => {
+        const user = c.get("user");
+        const patientId = c.req.param("patientId") as string;
+        const correlationId = (c.get("correlationId") as string) || "corr-" + Date.now();
+        const admin = getAdminClient();
+
+        // 1. Verify patient belongs to workspace
+        const { data: patient, error: pErr } = await admin
+            .from("patients")
+            .select("id, workspace_id, is_deleted")
+            .eq("id", patientId)
+            .eq("is_deleted", false)
+            .single();
+
+        if (pErr || !patient || patient.workspace_id !== user.workspaceId) {
+            throw ApiError.notFound("Patient not found");
+        }
+
+        // 2. If doctor, verify assignment
+        if (user.role === "doctor") {
+            const { data: assignment } = await admin
+                .from("care_team_assignments")
+                .select("id")
+                .eq("patient_id", patientId)
+                .eq("doctor_profile_id", user.profileId)
+                .is("revoked_at", null)
+                .maybeSingle();
+
+            if (!assignment) {
+                throw ApiError.notFound("Patient not found");
+            }
+        }
+
+        const body = await c.req.json().catch(() => ({}));
+        const result = await evaluateDailyPatternForPatient(patientId, {
+            force: body.force,
+            mockConsecutiveSkips: body.mockConsecutiveSkips,
+            mockAdherenceRate: body.mockAdherenceRate,
+            actorProfileId: user.profileId,
+            correlationId,
+        });
+
+        return c.json(result);
+    },
+);
+
+/**
+ * POST /doctor/escalations/:id/respond (Task 2.4)
+ * Allows doctor to submit 1-click clinical actions (telehealth, nurse call, medication adjustment, acknowledge).
+ */
+const escalationActionSchema = z.object({
+    action: z.enum(["telehealth", "nurse_call", "adjust_medication", "acknowledge"]),
+    notes: z.string().optional(),
+});
+
+doctorRouter.post(
+    "/escalations/:id/respond",
+    requireRole("doctor", "admin"),
+    async (c) => {
+        const user = c.get("user");
+        const escalationId = c.req.param("id") as string;
+        const correlationId = (c.get("correlationId") as string) || "corr-" + Date.now();
+        const admin = getAdminClient();
+
+        const body = await c.req.json().catch(() => ({}));
+        const parseResult = escalationActionSchema.safeParse(body);
+        if (!parseResult.success) {
+            throw ApiError.badRequest("Invalid escalation action", parseResult.error.errors);
+        }
+
+        // Verify escalation exists and patient belongs to doctor's workspace
+        const { data: esc, error: eErr } = await admin
+            .from("escalations")
+            .select("id, patient_id")
+            .eq("id", escalationId)
+            .single();
+
+        if (eErr || !esc) {
+            throw ApiError.notFound("Escalation not found");
+        }
+
+        const { data: patient } = await admin
+            .from("patients")
+            .select("id, workspace_id")
+            .eq("id", esc.patient_id)
+            .single();
+
+        if (!patient || patient.workspace_id !== user.workspaceId) {
+            throw ApiError.notFound("Escalation not found");
+        }
+
+        if (user.role === "doctor") {
+            const { data: assignment } = await admin
+                .from("care_team_assignments")
+                .select("id")
+                .eq("patient_id", patient.id)
+                .eq("doctor_profile_id", user.profileId)
+                .is("revoked_at", null)
+                .maybeSingle();
+
+            if (!assignment) {
+                throw ApiError.forbidden("You are not assigned to this patient's care team");
+            }
+        }
+
+        const updated = await respondToEscalation(escalationId, {
+            action: parseResult.data.action,
+            notes: parseResult.data.notes,
+            doctorProfileId: user.profileId,
+            correlationId,
+        });
+
+        return c.json({
+            success: true,
+            escalation: updated,
+            correlationId,
+        });
+    },
+);
 
 /**
  * GET /doctor/settings (Task 2.7)

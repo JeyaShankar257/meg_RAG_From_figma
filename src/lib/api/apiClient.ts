@@ -941,6 +941,60 @@ export const api = {
             correlationId: `corr-demo-${Date.now()}`,
           }),
 
+    evaluateDailyPattern: (
+      patientId: string,
+      options?: {
+        force?: boolean
+        mockConsecutiveSkips?: number
+        mockAdherenceRate?: number
+      },
+    ) =>
+      isBackendConfigured()
+        ? request<any>(
+            `/doctor/patients/${patientId}/evaluate-daily-pattern`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(options ?? {}),
+            },
+          )
+        : Promise.resolve<any>({
+            success: true,
+            patientId,
+            adherenceScore: options?.mockAdherenceRate ?? 92,
+            consecutiveSkips: options?.mockConsecutiveSkips ?? 0,
+            level1Triggered: false,
+            level2Triggered: false,
+            warningSent: false,
+            sosTriggered: false,
+            guardianNotified: false,
+            correlationId: `corr-demo-${Date.now()}`,
+            evaluatedAt: new Date().toISOString(),
+          }),
+
+    respondToEscalation: (
+      escalationId: string,
+      action: "telehealth" | "nurse_call" | "adjust_medication" | "acknowledge",
+      notes?: string,
+    ) =>
+      isBackendConfigured()
+        ? request<{ success: boolean; escalation: any }>(
+            `/doctor/escalations/${escalationId}/respond`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ action, notes }),
+            },
+          )
+        : Promise.resolve<{ success: boolean; escalation: any }>({
+            success: true,
+            escalation: {
+              id: escalationId,
+              status: action === "adjust_medication" ? "resolved" : "acknowledged",
+              acknowledgedAt: new Date().toISOString(),
+            },
+          }),
+
     getSettings: () =>
       isBackendConfigured()
         ? request<DoctorSettingsResponse>("/doctor/settings")

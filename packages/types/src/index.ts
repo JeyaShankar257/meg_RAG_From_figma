@@ -303,8 +303,10 @@ export type PipelineRunStatus = "pending" | "running" | "completed" | "failed";
 
 export type PipelineStageKey =
     | "reminder_agent"
-    | "dose_logging_agent"
     | "pattern_detection_agent"
+    | "patient_warning_agent"
+    | "sos_agent"
+    | "dose_logging_agent"
     | "escalation_agent"
     | "care_team_interaction_agent";
 
@@ -351,14 +353,24 @@ export interface PipelineStageLog {
     createdAt: string;
 }
 
-/** Visible stage name mapping for doctor-facing five-stage display */
+/** Visible stage name mapping for doctor-facing four-stage closed-loop display */
 export const PIPELINE_STAGE_DISPLAY: Record<PipelineStageKey, string> = {
-    reminder_agent: "Reminder Agent",
-    dose_logging_agent: "Dose Logging Agent",
+    reminder_agent: "Dose Reminder Agent",
     pattern_detection_agent: "Pattern Detection Agent",
+    patient_warning_agent: "Patient Health Warning Agent",
+    sos_agent: "Doctor & Guardian SOS Agent",
+    dose_logging_agent: "Dose Logging Agent",
     escalation_agent: "Escalation Agent",
     care_team_interaction_agent: "Care Team Interaction",
 };
+
+/** The 4 canonical stages for the closed-loop adherence pipeline */
+export const CANONICAL_4_STAGES: PipelineStageKey[] = [
+    "reminder_agent",
+    "pattern_detection_agent",
+    "patient_warning_agent",
+    "sos_agent",
+];
 
 // ─── Doctor Dashboard Aggregates ──────────────────────────────────────────────
 

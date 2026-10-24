@@ -47,6 +47,9 @@ function resetMockStore() {
                 full_name: "Marcus Rivera",
                 date_of_birth: "1978-04-12",
                 is_deleted: false,
+                guardian_name: "Sarah Rivera",
+                guardian_email: "sarah.rivera.guardian@example.com",
+                guardian_phone: "555-0199",
             },
             {
                 id: "p-002",
@@ -116,6 +119,7 @@ function resetMockStore() {
             },
         ],
         prescription_revisions: [],
+        dose_logs: [],
         pipeline_runs: [],
         pipeline_stages: [],
         pipeline_stage_logs: [],
@@ -174,6 +178,10 @@ vi.mock("../lib/supabase.js", () => {
             }),
             in: vi.fn().mockImplementation((field: string, vals: any[]) => {
                 currentFilter = currentFilter.filter((r) => vals.includes(r[field]));
+                return query;
+            }),
+            gte: vi.fn().mockImplementation((field: string, val: any) => {
+                currentFilter = currentFilter.filter((r) => r[field] >= val);
                 return query;
             }),
             is: vi.fn().mockImplementation((field: string, val: any) => {
@@ -310,18 +318,17 @@ describe("Doctor Portal Backend Workflows (Tasks 2.1 - 2.8)", () => {
             expect(mockStore.prescription_revisions.length).toBe(1);
             expect(mockStore.prescription_revisions[0].prescription_id).toBe("rx-001");
 
-            // Verify pipeline run and 5 stages created
+            // Verify pipeline run and 4 canonical stages created
             expect(mockStore.pipeline_runs.length).toBe(1);
             expect(mockStore.pipeline_runs[0].patient_id).toBe("p-001");
-            expect(mockStore.pipeline_stages.length).toBe(5);
+            expect(mockStore.pipeline_stages.length).toBe(4);
 
             // Verify initial stage keys
             const stageKeys = mockStore.pipeline_stages.map((s: any) => s.stage_key);
             expect(stageKeys).toContain("reminder_agent");
-            expect(stageKeys).toContain("dose_logging_agent");
             expect(stageKeys).toContain("pattern_detection_agent");
-            expect(stageKeys).toContain("escalation_agent");
-            expect(stageKeys).toContain("care_team_interaction_agent");
+            expect(stageKeys).toContain("patient_warning_agent");
+            expect(stageKeys).toContain("sos_agent");
 
             // Verify downstream job enqueued with pipeline_run_id and pipeline_stage_id
             expect(mockStore.jobs.length).toBe(1);
@@ -631,6 +638,147 @@ describe("Doctor Portal Backend Workflows (Tasks 2.1 - 2.8)", () => {
                     Authorization: "Bearer demo-token-doctor",
                 },
                 body: JSON.stringify(invalidPayload),
+            });
+
+            expect(res.status).toBe(400);
+        });
+    });
+
+    // ─── Task 2.1 - 2.5: 4-Stage Adherence Pipeline Tests ───────────────────────
+
+    describe("POST /doctor/patients/:patientId/evaluate-daily-pattern", () => {
+        it("evaluates normal adherence: pattern detection complete, no warnings triggered", async () => {
+            const res = await app.request("/doctor/patients/p-001/evaluate-daily-pattern", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: "Bearer demo-token-doctor",
+                },
+                body: JSON.stringify({
+                    mockConsecutiveSkips: 0,
+                    mockAdherenceRate: 95,
+                }),
+            });
+
+            expect(res.status).toBe(200);
+            const data = (await res.json()) as any;
+            expect(data.success).toBe(true);
+            expect(data.adherenceScore).toBe(95);
+            expect(data.consecutiveSkips).toBe(0);
+            expect(data.level1Triggered).toBe(false);
+            expect(data.level2Triggered).toBe(false);
+            expect(data.sosTriggered).toBe(false);
+        });
+
+        it("evaluates 2 consecutive skips: triggers Level 1 patient health warning", async () => {
+            const res = await app.request("/doctor/patients/p-001/evaluate-daily-pattern", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: "Bearer demo-token-doctor",
+                },
+                body: JSON.stringify({
+                    mockConsecutiveSkips: 2,
+                    mockAdherenceRate: 70,
+                    force: true,
+                }),
+            });
+
+            expect(res.status).toBe(200);
+            const data = (await res.json()) as any;
+            expect(data.success).toBe(true);
+            expect(data.consecutiveSkips).toBe(2);
+            expect(data.level1Triggered).toBe(true);
+            expect(data.warningSent).toBe(true);
+            expect(data.level2Triggered).toBe(false);
+        });
+
+        it("evaluates 3 consecutive skips: triggers Level 2 SOS escalation and notifies guardian", async () => {
+            const res = await app.request("/doctor/patients/p-001/evaluate-daily-pattern", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: "Bearer demo-token-doctor",
+                },
+                body: JSON.stringify({
+                    mockConsecutiveSkips: 3,
+                    mockAdherenceRate: 50,
+                    force: true,
+                }),
+            });
+
+            expect(res.status).toBe(200);
+            const data = (await res.json()) as any;
+            expect(data.success).toBe(true);
+            expect(data.consecutiveSkips).toBe(3);
+            expect(data.level2Triggered).toBe(true);
+            expect(data.sosTriggered).toBe(true);
+            expect(data.guardianNotified).toBe(true);
+            expect(data.guardianEmail).toBe("sarah.rivera.guardian@example.com");
+
+            // Verify escalation record created in store
+            expect(mockStore.escalations.length).toBeGreaterThan(0);
+            const urgentEsc = mockStore.escalations.find((e: any) => e.severity === "critical");
+            expect(urgentEsc).toBeDefined();
+        });
+
+        it("rejects evaluation request if patient is not assigned to doctor", async () => {
+            const res = await app.request("/doctor/patients/p-unassigned/evaluate-daily-pattern", {
+                method: "POST",
+                headers: {
+                    Authorization: "Bearer demo-token-doctor",
+                },
+            });
+
+            expect(res.status).toBe(404);
+        });
+    });
+
+    describe("POST /doctor/escalations/:id/respond", () => {
+        it("records clinical response action and updates escalation status to acknowledged", async () => {
+            // Seed an open escalation for p-001
+            const escId = "esc-test-sos-001";
+            mockStore.escalations.push({
+                id: escId,
+                patient_id: "p-001",
+                severity: "critical",
+                status: "open",
+                reasoning: "Patient missed 3 consecutive doses",
+            });
+
+            const res = await app.request(`/doctor/escalations/${escId}/respond`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: "Bearer demo-token-doctor",
+                },
+                body: JSON.stringify({
+                    action: "telehealth",
+                    notes: "Scheduled urgent tele-consultation for tomorrow 10:00 AM.",
+                }),
+            });
+
+            expect(res.status).toBe(200);
+            const data = (await res.json()) as any;
+            expect(data.success).toBe(true);
+            expect(data.escalation.status).toBe("acknowledged");
+
+            // Verify audit event logged
+            const audit = mockStore.audit_events.find((a: any) => a.target_id === escId);
+            expect(audit).toBeDefined();
+            expect(audit.actor_profile_id).toBe(doctorProfileId);
+        });
+
+        it("rejects invalid action with 400", async () => {
+            const res = await app.request("/doctor/escalations/esc-001/respond", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: "Bearer demo-token-doctor",
+                },
+                body: JSON.stringify({
+                    action: "invalid_action",
+                }),
             });
 
             expect(res.status).toBe(400);

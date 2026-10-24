@@ -57,18 +57,30 @@ export const JOB_TYPE_TO_STAGE: Record<PipelineJobType, PipelineStageKey> = {
 // ─── Stage display names (canonical) ─────────────────────────────────────────
 
 export const STAGE_AGENT_NAMES: Record<PipelineStageKey, string> = {
-    reminder_agent: "Reminder Agent",
-    dose_logging_agent: "Dose Logging Agent",
+    reminder_agent: "Dose Reminder Agent",
     pattern_detection_agent: "Pattern Detection Agent",
+    patient_warning_agent: "Patient Health Warning Agent",
+    sos_agent: "Doctor & Guardian SOS Agent",
+    dose_logging_agent: "Dose Logging Agent",
     escalation_agent: "Escalation Agent",
     care_team_interaction_agent: "Care Team Interaction Agent",
 };
 
-/** All five stage keys in canonical display order */
+/** All canonical four stage keys in closed-loop display order */
+export const PIPELINE_4_STAGE_ORDER: PipelineStageKey[] = [
+    "reminder_agent",
+    "pattern_detection_agent",
+    "patient_warning_agent",
+    "sos_agent",
+];
+
+/** All stage keys in display order (including legacy) */
 export const PIPELINE_STAGE_ORDER: PipelineStageKey[] = [
     "reminder_agent",
-    "dose_logging_agent",
     "pattern_detection_agent",
+    "patient_warning_agent",
+    "sos_agent",
+    "dose_logging_agent",
     "escalation_agent",
     "care_team_interaction_agent",
 ];

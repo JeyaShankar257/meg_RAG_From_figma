@@ -277,22 +277,16 @@ prescriptionsRouter.post("/:id/approve", requireRole("doctor"), async (c) => {
     if (runRecord) {
         pipelineRunId = runRecord.id;
 
-        // Initialize 5 visible pipeline stages
+        // Initialize 4 canonical closed-loop pipeline stages
         const stageInserts = [
             {
                 pipeline_run_id: runRecord.id,
                 stage_key: "reminder_agent",
-                status: "running",
-                agent_name: "Reminder Agent",
+                status: "complete",
+                agent_name: "Dose Reminder Agent",
                 attempt: 1,
                 started_at: approvedAt,
-            },
-            {
-                pipeline_run_id: runRecord.id,
-                stage_key: "dose_logging_agent",
-                status: "idle",
-                agent_name: "Dose Logging Agent",
-                attempt: 0,
+                completed_at: approvedAt,
             },
             {
                 pipeline_run_id: runRecord.id,
@@ -303,16 +297,16 @@ prescriptionsRouter.post("/:id/approve", requireRole("doctor"), async (c) => {
             },
             {
                 pipeline_run_id: runRecord.id,
-                stage_key: "escalation_agent",
+                stage_key: "patient_warning_agent",
                 status: "idle",
-                agent_name: "Escalation Agent",
+                agent_name: "Patient Health Warning Agent",
                 attempt: 0,
             },
             {
                 pipeline_run_id: runRecord.id,
-                stage_key: "care_team_interaction_agent",
+                stage_key: "sos_agent",
                 status: "idle",
-                agent_name: "Care Team Interaction Agent",
+                agent_name: "Doctor & Guardian SOS Agent",
                 attempt: 0,
             },
         ];

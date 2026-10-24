@@ -8,11 +8,17 @@ Provides the authenticated, persistent clinical backend required by the doctor a
 
 ### Requirement: Role-gated authenticated access
 
-The system SHALL authenticate accounts and SHALL authorize every protected operation according to the account role, workspace membership, patient assignment, caregiver grant, and current consent state. A doctor login route MUST reject patient-only accounts and a patient login route MUST reject clinician-only accounts.
+The system SHALL authenticate only verified Supabase accounts with matching
+application profiles, SHALL enforce administrator approval for doctors, SHALL
+enforce invitation activation for patients, and SHALL authorize every
+protected operation according to the account role, workspace membership,
+patient assignment, caregiver grant, and current consent state. A doctor login
+route MUST reject patient-only accounts and a patient login route MUST reject
+clinician-only accounts.
 
 #### Scenario: Doctor signs in through the doctor route
 
-- **WHEN** a valid doctor account submits credentials to the doctor login flow
+- **WHEN** a valid, verified, approved doctor account submits credentials to the doctor login flow
 - **THEN** the system creates an authenticated session and grants access only to clinician-authorized portal resources
 
 #### Scenario: Account uses the wrong portal
@@ -25,9 +31,24 @@ The system SHALL authenticate accounts and SHALL authorize every protected opera
 - **WHEN** a request without a valid session requests private clinical data or performs a private mutation
 - **THEN** the system rejects the request and the frontend presents an unauthorized or sign-in state
 
+#### Scenario: Unverified account attempts protected access
+
+- **WHEN** an Auth account has not completed email verification
+- **THEN** the system rejects login and does not expose protected clinical data
+
+#### Scenario: Doctor with a temporary password signs in
+
+- **WHEN** an approved doctor logs in while the profile requires a password change
+- **THEN** the system issues only a restricted session and routes the doctor to the password-change flow
+
 ### Requirement: Persistent clinical records with server-side access control
 
-The system SHALL persist patient profiles, system-generated patient identifiers, care-team relationships, consent grants, visits, conditions, medications, prescriptions, dose schedules, dose logs, adherence summaries, escalations, reports, and notification preferences. Every read and write SHALL be checked server-side and SHALL prevent access to unassigned or revoked patient records.
+The system SHALL persist patient profiles, system-generated patient identifiers,
+care-team relationships, consent grants, visits, conditions, medications,
+prescriptions, dose schedules, dose logs, adherence summaries, escalations,
+reports, and notification preferences. Every read and write SHALL be checked
+server-side and SHALL prevent access to unassigned, revoked, unverified,
+pending, or wrong-workspace patient records.
 
 #### Scenario: Doctor creates a patient
 
@@ -36,13 +57,23 @@ The system SHALL persist patient profiles, system-generated patient identifiers,
 
 #### Scenario: Patient reads their care data
 
-- **WHEN** an authenticated patient requests dashboard, visit, medication, adherence, or consent data
+- **WHEN** an authenticated active patient requests dashboard, visit, medication, adherence, or consent data
 - **THEN** the system returns only records belonging to that patient and filtered by current sharing policy
 
 #### Scenario: Clinician requests an unassigned patient
 
 - **WHEN** an authenticated clinician requests a patient record outside their permitted workspace or assignment
 - **THEN** the system denies the request without revealing whether the record exists
+
+#### Scenario: Patient completes activation
+
+- **WHEN** an invited patient successfully sets a password and verifies the email
+- **THEN** the linked patient record transitions from pending to active according to the account activation policy
+
+#### Scenario: Incomplete invitation is retried
+
+- **WHEN** profile provisioning fails after an invitation attempt
+- **THEN** the system exposes an actionable failure and does not leave an untracked clinical patient identity
 
 ### Requirement: Reliable dose and prescription workflows
 
@@ -113,7 +144,12 @@ The system SHALL process reminders, delivery outcomes, adherence aggregation, AI
 
 ### Requirement: Consent, correction, and audit visibility
 
-The system SHALL persist patient consent and communication preferences, enforce required-versus-optional sharing rules, support correction or review requests for dose, adherence, report, and AI records, and append immutable audit events for authentication, private access, clinical mutations, AI activity, sharing changes, exports, and administrative changes.
+The system SHALL persist patient consent and communication preferences, enforce
+required-versus-optional sharing rules, support correction or review requests
+for dose, adherence, report, and AI records, and append immutable audit events
+for authentication, private access, clinical mutations, AI activity, sharing
+changes, exports, invitations, approval decisions, activation, password
+changes, denied authorization, cleanup, and administrative changes.
 
 #### Scenario: Patient changes optional consent
 
@@ -128,4 +164,14 @@ The system SHALL persist patient consent and communication preferences, enforce 
 #### Scenario: Auditor reviews an event
 
 - **WHEN** an authorized administrator or auditor requests audit history for a permitted scope
-- **THEN** the system returns append-only events with actor, action, target, timestamp, correlation identifier, and relevant outcome without exposing secrets
+- **THEN** the system returns append-only events with actor, action, target, timestamp, correlation identifier, and relevant outcome without exposing credentials or tokens
+
+#### Scenario: Administrator approves a doctor
+
+- **WHEN** an administrator changes a doctor from pending to approved
+- **THEN** the system records the actor, target, workspace, timestamp, and outcome in an immutable audit event
+
+#### Scenario: Unauthorized provisioning is denied
+
+- **WHEN** a non-administrator attempts to invite or approve a doctor
+- **THEN** the operation is rejected and the denied administrative action is auditable without exposing credentials
