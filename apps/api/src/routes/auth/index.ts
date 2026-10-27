@@ -7,8 +7,10 @@ import {
   getAdminClient,
   getAuthAdminClient,
   getPublicAuthClient,
+  getUserClient,
 } from "../../lib/supabase.js"
 import { authMiddleware, requireRole } from "../../middleware/auth.js"
+import { logger } from "../../lib/logger.js"
 
 export const authRouter = new Hono()
 
@@ -280,7 +282,7 @@ authRouter.post("/login", async (c) => {
     throw ApiError.unauthorized("Invalid email or password")
   }
 
-  let { data: profile } = await admin
+  const { data: profileData, error: profileErr } = await admin
     .from("profiles")
     .select(
       "id, workspace_id, role, full_name, email, approval_status, must_change_password",
@@ -288,15 +290,57 @@ authRouter.post("/login", async (c) => {
     .eq("id", authData.user.id)
     .maybeSingle()
 
-  // Fallback: If not found by auth user UUID, lookup by authenticated email
+  if (profileErr) {
+    logger.error("Database error querying profile by user ID", {
+      userId: authData.user.id,
+      error: profileErr,
+    })
+  }
+
+  let profile = profileData
+
+  // Fallback 1: Query with authenticated user client (guaranteed to bypass any admin key or service-role RLS bypass hiccup)
+  if (!profile && authData.session?.access_token) {
+    try {
+      const userClient = getUserClient(authData.session.access_token)
+      const { data: profileByUserClient } = await userClient
+        .from("profiles")
+        .select(
+          "id, workspace_id, role, full_name, email, approval_status, must_change_password",
+        )
+        .eq("id", authData.user.id)
+        .maybeSingle()
+
+      if (profileByUserClient) {
+        profile = profileByUserClient
+        logger.info("Retrieved profile via authenticated user client fallback", {
+          userId: authData.user.id,
+        })
+      }
+    } catch (e) {
+      logger.warn("User client profile fallback failed", {
+        userId: authData.user.id,
+        error: (e as Error).message,
+      })
+    }
+  }
+
+  // Fallback 2: If not found by auth user UUID, lookup by authenticated email (case-insensitive)
   if (!profile && email) {
-    const { data: profileByEmail } = await admin
+    const { data: profileByEmail, error: emailErr } = await admin
       .from("profiles")
       .select(
         "id, workspace_id, role, full_name, email, approval_status, must_change_password",
       )
-      .eq("email", email)
+      .ilike("email", email.trim())
       .maybeSingle()
+
+    if (emailErr) {
+      logger.error("Database error querying profile by email", {
+        email,
+        error: emailErr,
+      })
+    }
 
     if (profileByEmail) {
       profile = profileByEmail
@@ -304,6 +348,10 @@ authRouter.post("/login", async (c) => {
   }
 
   if (!profile) {
+    logger.warn("Account profile not found for authenticated user", {
+      userId: authData.user.id,
+      email,
+    })
     throw ApiError.unauthorized("Account profile not found")
   }
 
@@ -319,14 +367,24 @@ authRouter.post("/login", async (c) => {
 
   let patientRecord: { id: string; status: string } | null = null
   if (profile.role === "patient") {
-    const { data: patient } = await admin
+    const { data: patient, error: patientErr } = await admin
       .from("patients")
       .select("id, status")
       .eq("profile_id", profile.id)
       .eq("is_deleted", false)
       .maybeSingle()
 
+    if (patientErr) {
+      logger.error("Database error querying patient record", {
+        profileId: profile.id,
+        error: patientErr,
+      })
+    }
+
     if (!patient) {
+      logger.warn("Patient record missing for patient profile", {
+        profileId: profile.id,
+      })
       throw ApiError.unauthorized("Account profile not found")
     }
     if (patient.status === "pending") {
