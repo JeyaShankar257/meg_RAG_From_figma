@@ -1,22 +1,73 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import Button from "../../components/ui/Button";
 import Input, { Select } from "../../components/ui/Input";
 import Card from "../../components/ui/Card";
 import { api } from "../../lib/api/apiClient";
+import { useSession } from "../../lib/auth/SessionProvider";
 
 export default function NewPatient() {
   const navigate = useNavigate();
+  const { user } = useSession();
+
+  const currentDoctorName = user?.fullName
+    ? (user.fullName.startsWith("Dr.") ? user.fullName : `Dr. ${user.fullName}`)
+    : (user?.email ? `Dr. ${user.email.split("@")[0]}` : "Attending Physician");
+
   const [step, setStep] = useState<"form" | "confirm">("form");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [createdPatient, setCreatedPatient] = useState<{ patientId?: string; id?: string } | null>(null);
+  const [doctorOptions, setDoctorOptions] = useState<Array<{ value: string; label: string }>>([
+    { value: currentDoctorName, label: `${currentDoctorName} (You) — Attending Physician` },
+  ]);
+
   const [form, setForm] = useState({
     firstName: "", lastName: "", email: "", phone: "",
     dob: "", gender: "", address: "", guardianName: "",
     guardianPhone: "", guardianEmail: "", conditions: "",
-    assignedDoctor: "Dr. Jeya Shankar M", careTeamNotes: "", consent: false,
+    assignedDoctor: currentDoctorName, careTeamNotes: "", consent: false,
   });
+
+  useEffect(() => {
+    const docName = user?.fullName
+      ? (user.fullName.startsWith("Dr.") ? user.fullName : `Dr. ${user.fullName}`)
+      : (user?.email ? `Dr. ${user.email.split("@")[0]}` : "Attending Physician");
+
+    api.careTeam.list()
+      .then((res) => {
+        const teamDoctors = (res.members || [])
+          .filter((m: any) => m.role === "doctor")
+          .map((m: any) => {
+            const rawName = m.fullName || m.name || m.full_name || (m.email ? m.email.split("@")[0] : "Doctor");
+            const formatted = rawName.startsWith("Dr.") ? rawName : `Dr. ${rawName}`;
+            const isCurrent = formatted.toLowerCase() === docName.toLowerCase() || (m.email && m.email === user?.email);
+            return {
+              value: formatted,
+              label: isCurrent ? `${formatted} (You) — Attending Physician` : `${formatted} — Internal Medicine`,
+            };
+          });
+
+        const hasCurrent = teamDoctors.some(
+          (d) => d.value.toLowerCase() === docName.toLowerCase() || d.label.includes("(You)")
+        );
+        const options = hasCurrent
+          ? teamDoctors
+          : [{ value: docName, label: `${docName} (You) — Attending Physician` }, ...teamDoctors];
+
+        setDoctorOptions(options);
+      })
+      .catch(() => {
+        setDoctorOptions([{ value: docName, label: `${docName} (You) — Attending Physician` }]);
+      });
+
+    setForm((prev) => ({
+      ...prev,
+      assignedDoctor: prev.assignedDoctor && prev.assignedDoctor !== "Attending Physician" && prev.assignedDoctor !== "Dr. Jeya Shankar M"
+        ? prev.assignedDoctor
+        : docName,
+    }));
+  }, [user?.fullName, user?.email]);
 
   const generatedId = createdPatient?.patientId ?? createdPatient?.id ?? "Pending";
 
@@ -116,7 +167,7 @@ export default function NewPatient() {
           <Button variant="secondary" fullWidth onClick={() => navigate("/doctor")}>
             Back to Dashboard
           </Button>
-          <Button fullWidth onClick={() => { setStep("form"); setForm({ firstName: "", lastName: "", email: "", phone: "", dob: "", gender: "", address: "", guardianName: "", guardianPhone: "", guardianEmail: "", conditions: "", assignedDoctor: "Dr. Jeya Shankar M", careTeamNotes: "", consent: false }); }}>
+          <Button fullWidth onClick={() => { setStep("form"); setForm({ firstName: "", lastName: "", email: "", phone: "", dob: "", gender: "", address: "", guardianName: "", guardianPhone: "", guardianEmail: "", conditions: "", assignedDoctor: currentDoctorName, careTeamNotes: "", consent: false }); }}>
             Add Another Patient
           </Button>
         </div>
@@ -246,9 +297,7 @@ export default function NewPatient() {
               label="Assigned Doctor"
               value={form.assignedDoctor}
               onChange={(e) => setForm({ ...form, assignedDoctor: e.target.value })}
-              options={[
-                { value: "Dr. Jeya Shankar M", label: "Dr. Jeya Shankar M — Internal Medicine" },
-              ]}
+              options={doctorOptions}
             />
           </div>
         </Card>
