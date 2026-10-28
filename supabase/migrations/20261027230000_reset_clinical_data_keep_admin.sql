@@ -1,4 +1,4 @@
--- Migration: 20261027230000_reset_clinical_data_keep_admin.sql
+- Migration: 20261027230000_reset_clinical_data_keep_admin.sql
 -- Wipes all mock/clinical data and non-admin accounts, preserving admin mjeyashankar2005@gmail.com
 
 -- 1. Disable triggers and foreign keys for session
