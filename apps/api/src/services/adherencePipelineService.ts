@@ -157,16 +157,25 @@ export async function evaluateDailyPatternForPatient(
     const correlationId = options.correlationId || `corr-eval-${Date.now()}`;
     const evaluatedAt = new Date().toISOString();
 
-    // 1. Fetch patient record
-    const { data: patient, error: pErr } = await admin
+    // 1. Fetch patient record (supports candidate IDs and contact_email)
+    const candidateIds = [
+        patientId,
+        patientId.replace(/^PT-/i, "p-"),
+        patientId.replace(/^PT-/i, "P-"),
+    ];
+
+    const patientQuery = admin
         .from("patients")
-        .select("id, workspace_id, profile_id, full_name, guardian_name, guardian_email, guardian_phone")
-        .eq("id", patientId)
-        .maybeSingle();
+        .select("id, workspace_id, profile_id, full_name, contact_email, guardian_name, guardian_email, guardian_phone");
+    const { data: patient, error: pErr } = typeof (patientQuery as any).in === "function"
+        ? await (patientQuery as any).in("id", candidateIds).maybeSingle()
+        : await patientQuery.eq("id", patientId).maybeSingle();
 
     if (pErr || !patient) {
         throw new Error(`Patient ${patientId} not found`);
     }
+
+    const resolvedPatientId = patient.id;
 
     // 2. Fetch active prescriptions
     const { data: prescriptions } = await admin
@@ -297,7 +306,7 @@ export async function evaluateDailyPatternForPatient(
         } else {
             // Send warning email to patient
             const risks = getDrugSpecificRisks(activeMeds);
-            const patientEmail = "patient.rivera@example.com"; // Default for demo patient
+            const patientEmail = patient.contact_email || "patient.rivera@example.com";
             const emailSubject = `Important Notice: Clinical Medication Adherence Alert for ${patient.full_name}`;
             const emailText = `Hello ${patient.full_name},\n\nOur clinical care team noticed that you have missed or skipped your prescribed medication for ${consecutiveSkips} consecutive day(s).\n\nPotential Health Risks:\n${risks.map((r) => `• ${r}`).join("\n")}\n\nPlease take your prescribed dose as soon as possible, or log in to the Patient Portal to report any side effects or speak with your care team.\n\nMedNova Clinical Adherence Team`;
 

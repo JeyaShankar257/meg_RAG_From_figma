@@ -1254,24 +1254,32 @@ doctorRouter.post(
         const correlationId = (c.get("correlationId") as string) || "corr-" + Date.now();
         const admin = getAdminClient();
 
-        // 1. Verify patient belongs to workspace
-        const { data: patient, error: pErr } = await admin
+        // 1. Verify patient belongs to workspace (support PT- / P- candidate IDs)
+        const candidateIds = [
+            patientId,
+            patientId.replace(/^PT-/i, "p-"),
+            patientId.replace(/^PT-/i, "P-"),
+        ];
+
+        const patientQuery = admin
             .from("patients")
-            .select("id, workspace_id, is_deleted")
-            .eq("id", patientId)
-            .eq("is_deleted", false)
-            .single();
+            .select("id, workspace_id, is_deleted");
+        const { data: patient, error: pErr } = typeof (patientQuery as any).in === "function"
+            ? await (patientQuery as any).in("id", candidateIds).eq("is_deleted", false).limit(1).maybeSingle()
+            : await patientQuery.eq("id", patientId).eq("is_deleted", false).maybeSingle();
 
         if (pErr || !patient || patient.workspace_id !== user.workspaceId) {
             throw ApiError.notFound("Patient not found");
         }
+
+        const resolvedId = patient.id;
 
         // 2. If doctor, verify assignment
         if (user.role === "doctor") {
             const { data: assignment } = await admin
                 .from("care_team_assignments")
                 .select("id")
-                .eq("patient_id", patientId)
+                .eq("patient_id", resolvedId)
                 .eq("doctor_profile_id", user.profileId)
                 .is("revoked_at", null)
                 .maybeSingle();
@@ -1282,7 +1290,7 @@ doctorRouter.post(
         }
 
         const body = await c.req.json().catch(() => ({}));
-        const result = await evaluateDailyPatternForPatient(patientId, {
+        const result = await evaluateDailyPatternForPatient(resolvedId, {
             force: body.force,
             mockConsecutiveSkips: body.mockConsecutiveSkips,
             mockAdherenceRate: body.mockAdherenceRate,
