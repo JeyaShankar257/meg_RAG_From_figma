@@ -140,6 +140,8 @@ export default function PatientPage() {
   const [reindexingReportId, setReindexingReportId] = useState<string | null>(
     null,
   )
+  const [resendingInvite, setResendingInvite] = useState(false)
+  const [inviteBanner, setInviteBanner] = useState<string | null>(null)
 
   useEffect(() => {
     if (!isBackendConfigured() || !patientId) return
@@ -846,8 +848,33 @@ export default function PatientPage() {
     )
   }
 
+  const handleResendInvite = async () => {
+    if (!patient?.id) return
+    setResendingInvite(true)
+    try {
+      const res = await api.patients.resendInvite(patient.id)
+      setInviteBanner(res.message || "Activation email sent successfully.")
+      setTimeout(() => setInviteBanner(null), 6000)
+    } catch (err: any) {
+      alert(err?.message || "Failed to resend invitation email.")
+    } finally {
+      setResendingInvite(false)
+    }
+  }
+
   return (
     <div className="animate-fade-in">
+      {inviteBanner && (
+        <div className="mx-6 mt-4 rounded-lg bg-emerald-50 border border-emerald-200 px-4 py-3 text-sm text-emerald-800 flex items-center justify-between">
+          <span>✅ {inviteBanner}</span>
+          <button
+            onClick={() => setInviteBanner(null)}
+            className="text-emerald-600 hover:text-emerald-900 font-bold ml-2"
+          >
+            ×
+          </button>
+        </div>
+      )}
       {loadingData && (
         <div className="mx-6 mt-4 rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-sm text-slate-500">
           Loading patient data…
@@ -895,6 +922,16 @@ export default function PatientPage() {
             </div>
           </div>
           <div className="flex items-center gap-3">
+            {patient.status !== "active" && (
+              <Button
+                variant="outline"
+                size="sm"
+                loading={resendingInvite}
+                onClick={handleResendInvite}
+              >
+                Resend Activation Link
+              </Button>
+            )}
             <TrustBadge
               score={adherence?.score ?? patient.adherenceScore}
               trend={adherence?.trend ?? patient.trend}

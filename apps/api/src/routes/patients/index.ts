@@ -5,6 +5,7 @@ import { getConfig, getApiOrigin } from "../../config.js";
 import { getAdminClient, getAuthAdminClient } from "../../lib/supabase.js";
 import { authMiddleware, requireRole } from "../../middleware/auth.js";
 import { authorizePatientAccess } from "../../services/authorization.js";
+import { sendEmail } from "../../services/emailService.js";
 
 export const patientsRouter = new Hono();
 
@@ -928,5 +929,87 @@ patientsRouter.put("/:id/settings", async (c) => {
 
     if (error) throw ApiError.internal("Failed to update notification settings", error.message);
     return c.json({ success: true, setting: updated });
+});
+
+// Resend Patient Invitation / Activation Link
+patientsRouter.post("/:id/resend-invite", async (c) => {
+    const user = c.get("user");
+    const patientId = c.req.param("id");
+    const { patient } = await ensurePatientAccess(c, patientId);
+    const correlationId = c.get("correlationId") || "resend-patient-corr";
+    const admin = getAdminClient();
+    const authAdmin = getAuthAdminClient();
+    const config = getConfig();
+
+    let actionLink: string | null = null;
+    let deliveryMethod = "supabase_invite";
+
+    const { error: inviteError } = await authAdmin.auth.admin.inviteUserByEmail(
+        patient.contact_email,
+        {
+            data: { role: "patient", patient_id: patient.id },
+            redirectTo: config.patientActivationUrl,
+        }
+    );
+
+    if (inviteError) {
+        const msg = inviteError.message.toLowerCase();
+        if (msg.includes("already registered") || msg.includes("already exists") || msg.includes("user already")) {
+            const { data: linkData, error: linkErr } = await authAdmin.auth.admin.generateLink({
+                type: "recovery",
+                email: patient.contact_email,
+                options: {
+                    redirectTo: config.patientActivationUrl,
+                },
+            });
+            if (linkErr || !linkData?.properties?.action_link) {
+                throw ApiError.internal("Failed to generate activation link", linkErr?.message);
+            }
+            actionLink = linkData.properties.action_link;
+        } else if (msg.includes("rate limit") || msg.includes("too many requests")) {
+            throw ApiError.tooManyRequests("Rate limit reached. Please wait before requesting another invite.");
+        } else {
+            throw ApiError.internal("Failed to send patient invitation", inviteError.message);
+        }
+    }
+
+    if (actionLink) {
+        deliveryMethod = "email_service";
+        await sendEmail({
+            to: patient.contact_email,
+            subject: "MedNova Health — Activate Your Patient Account",
+            text: `Hello ${patient.full_name},\n\nPlease use the following link to set your password and activate your MedNova Health patient account:\n\n${actionLink}\n\nThis link is valid for 24 hours.\n\n--\nMedNova Care Team`,
+            html: `
+                <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 24px;">
+                  <h2 style="color: #0f172a;">Welcome to MedNova Health</h2>
+                  <p>Hello ${patient.full_name},</p>
+                  <p>Your care team has sent you a new activation link to create your password and access your patient portal:</p>
+                  <p style="margin: 24px 0;">
+                    <a href="${actionLink}" style="background-color: #2563eb; color: #ffffff; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: bold; display: inline-block;">
+                      Activate Account & Set Password
+                    </a>
+                  </p>
+                  <p style="color: #64748b; font-size: 13px;">If the button above does not work, copy and paste this link into your browser:</p>
+                  <p style="word-break: break-all; font-size: 13px; color: #2563eb;">${actionLink}</p>
+                </div>
+            `,
+        });
+    }
+
+    await admin.from("audit_events").insert({
+        workspace_id: user.workspaceId,
+        actor_profile_id: user.profileId,
+        action: "resend_patient_invitation",
+        target_type: "patient",
+        target_id: patient.id,
+        correlation_id: correlationId,
+        outcome: "success",
+    });
+
+    return c.json({
+        success: true,
+        message: `Activation email sent to ${patient.contact_email}`,
+        deliveryMethod,
+    });
 });
 

@@ -11,6 +11,7 @@ import {
 } from "../../lib/supabase.js"
 import { authMiddleware, requireRole } from "../../middleware/auth.js"
 import { logger } from "../../lib/logger.js"
+import { sendEmail } from "../../services/emailService.js"
 
 export const authRouter = new Hono()
 
@@ -22,6 +23,11 @@ const loginSchema = z.object({
 
 const refreshSchema = z.object({
   refreshToken: z.string().min(1),
+})
+
+const resendActivationSchema = z.object({
+  email: z.string().email(),
+  portal: z.enum(["doctor", "patient"]).default("patient"),
 })
 
 const recoverSchema = z.object({
@@ -1186,6 +1192,86 @@ authRouter.post("/recover-password", async (c) => {
 })
 
 // ─── Email Verification ───────────────────────────────────────────────────────
+// ─── Resend Activation Link (Self-Service) ────────────────────────────────────
+authRouter.post("/resend-activation", async (c) => {
+  const body = await c.req.json()
+  const { email, portal } = resendActivationSchema.parse(body)
+
+  const admin = getAdminClient()
+  const authAdmin = getAuthAdminClient()
+  const config = getConfig()
+  const redirectUrl =
+    portal === "doctor"
+      ? config.doctorActivationUrl
+      : config.patientActivationUrl
+
+  try {
+    const { data: profile } = await admin
+      .from("profiles")
+      .select("id, full_name, email, role")
+      .ilike("email", email.trim())
+      .maybeSingle()
+
+    if (profile) {
+      let actionLink: string | null = null
+      const { data: linkData, error: linkErr } =
+        await authAdmin.auth.admin.generateLink({
+          type: "recovery",
+          email: profile.email,
+          options: {
+            redirectTo: redirectUrl,
+          },
+        })
+
+      if (!linkErr && linkData?.properties?.action_link) {
+        actionLink = linkData.properties.action_link
+      } else {
+        const { data: inviteData } = await authAdmin.auth.admin.generateLink({
+          type: "invite",
+          email: profile.email,
+          options: {
+            redirectTo: redirectUrl,
+          },
+        })
+        actionLink = inviteData?.properties?.action_link || null
+      }
+
+      if (actionLink) {
+        await sendEmail({
+          to: profile.email,
+          subject: "MedNova Health — Activate Your Account",
+          text: `Hello ${profile.full_name},\n\nPlease use the following link to set your password and activate your MedNova Health account:\n\n${actionLink}\n\nThis link is valid for 24 hours.\n\n--\nMedNova Care Team`,
+          html: `
+            <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 24px;">
+              <h2 style="color: #0f172a;">Activate Your MedNova Account</h2>
+              <p>Hello ${profile.full_name},</p>
+              <p>Here is your new activation link to create your password and access your portal:</p>
+              <p style="margin: 24px 0;">
+                <a href="${actionLink}" style="background-color: #2563eb; color: #ffffff; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: bold; display: inline-block;">
+                  Activate Account & Set Password
+                </a>
+              </p>
+              <p style="color: #64748b; font-size: 13px;">If the button does not work, copy and paste this link into your browser:</p>
+              <p style="word-break: break-all; font-size: 13px; color: #2563eb;">${actionLink}</p>
+              <p style="color: #94a3b8; font-size: 12px; margin-top: 24px;">If you did not request this link, you can safely ignore this email.</p>
+            </div>
+          `,
+        })
+      }
+    }
+  } catch (err) {
+    logger.warn("Failed to process resend activation request", {
+      error: String(err),
+    })
+  }
+
+  return c.json({
+    success: true,
+    message:
+      "If an account exists with that email, a new activation link has been sent.",
+  })
+})
+
 authRouter.post("/verify-email", async (c) => {
   const body = await c.req.json()
   const { tokenHash, type } = verifyEmailSchema.parse(body)

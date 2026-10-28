@@ -33,6 +33,21 @@ export default function DoctorDashboard() {
   const [loading, setLoading] = useState(true)
 
   const [error, setError] = useState("")
+  const [resendingId, setResendingId] = useState<string | null>(null)
+  const [dashboardNotice, setDashboardNotice] = useState<string | null>(null)
+
+  const handleResendInvite = async (patientId: string) => {
+    setResendingId(patientId)
+    try {
+      const res = await api.patients.resendInvite(patientId)
+      setDashboardNotice(res.message || "Activation email sent successfully.")
+      setTimeout(() => setDashboardNotice(null), 6000)
+    } catch (err: any) {
+      alert(err?.message || "Failed to resend invitation email.")
+    } finally {
+      setResendingId(null)
+    }
+  }
 
   const loadData = useCallback(() => {
     setLoading(true)
@@ -120,6 +135,17 @@ export default function DoctorDashboard() {
 
   return (
     <div className="p-6 max-w-7xl space-y-6 animate-fade-in">
+      {dashboardNotice && (
+        <div className="rounded-lg bg-emerald-50 border border-emerald-200 px-4 py-3 text-sm text-emerald-800 flex items-center justify-between">
+          <span>✅ {dashboardNotice}</span>
+          <button
+            onClick={() => setDashboardNotice(null)}
+            className="text-emerald-600 hover:text-emerald-900 font-bold ml-2"
+          >
+            ×
+          </button>
+        </div>
+      )}
       {/* Page header */}
       <div className="flex items-start justify-between">
         <div>
@@ -400,6 +426,19 @@ export default function DoctorDashboard() {
                           />
                         </div>
                       </>
+                    )}
+                    {patient.status !== "active" && (
+                      <button
+                        type="button"
+                        disabled={resendingId === patient.id}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleResendInvite(patient.id)
+                        }}
+                        className="px-2.5 py-1 text-xs font-medium text-teal-700 bg-teal-50 hover:bg-teal-100 disabled:opacity-50 rounded-md border border-teal-200 transition-colors"
+                      >
+                        {resendingId === patient.id ? "Sending…" : "Resend Invite"}
+                      </button>
                     )}
                     <svg
                       viewBox="0 0 24 24"

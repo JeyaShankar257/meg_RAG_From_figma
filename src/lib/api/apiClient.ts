@@ -317,6 +317,28 @@ export const api = {
       return body;
     },
 
+    resendActivation: async (
+      email: string,
+      portal: "patient" | "doctor" = "patient",
+    ) => {
+      const response = await fetch(`${API_BASE}/auth/resend-activation`, {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ email, portal }),
+      });
+      const body = (await response.json().catch(() => ({}))) as {
+        success?: boolean;
+        message?: string;
+      };
+      if (!response.ok) {
+        throw new Error(body.message ?? "Failed to request activation link.");
+      }
+      return body;
+    },
+
     async login(email: string, password: string, portal: PortalRole) {
       if (!isBackendConfigured() && import.meta.env?.DEV) {
         if (!email || !password)
@@ -521,6 +543,17 @@ export const api = {
               conditions: data.conditions ?? [],
               status: "invited" as const,
             },
+          }),
+
+    resendInvite: (id: string) =>
+      isBackendConfigured()
+        ? request<{ success: boolean; message: string }>(
+            `/patients/${id}/resend-invite`,
+            { method: "POST" },
+          )
+        : Promise.resolve({
+            success: true,
+            message: "Demo invitation resent successfully.",
           }),
 
     getVisits: (patientId: string) =>
