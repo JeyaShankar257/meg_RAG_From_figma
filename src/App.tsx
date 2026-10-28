@@ -95,6 +95,7 @@ export default function App() {
           {/* Patient auth */}
           <Route path="/patient/login" element={<PatientLogin />} />
           <Route path="/activate" element={<AcceptInvitation />} />
+          <Route path="/patient/activate" element={<AcceptInvitation />} />
 
           {/* Patient portal */}
           <Route

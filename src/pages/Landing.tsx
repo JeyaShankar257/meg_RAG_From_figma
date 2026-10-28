@@ -8,6 +8,16 @@ export default function Landing() {
   const [pulse, setPulse] = useState(false)
 
   useEffect(() => {
+    const hash = window.location.hash
+    if (hash && (hash.includes("access_token") || hash.includes("error="))) {
+      const params = new URLSearchParams(hash.replace(/^#/, ""))
+      const isDoctor = params.get("type") === "invite" && hash.includes("doctor")
+      const target = isDoctor ? "/doctor/activate" : "/activate"
+      navigate(`${target}${hash}`, { replace: true })
+    }
+  }, [navigate])
+
+  useEffect(() => {
     const timer = setInterval(() => setPulse((p) => !p), 1500)
 
     return () => clearInterval(timer)
