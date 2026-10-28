@@ -8,7 +8,8 @@
     "start": "node --env-file=.env --env-file=../../.env --import tsx/esm src/index.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "seed:demo": "node --env-file=.env --import tsx/esm src/scripts/seedDemo.ts"
+    "seed:demo": "node --env-file=.env --import tsx/esm src/scripts/seedDemo.ts",
+    "test:escalation": "node --env-file=.env --import tsx/esm src/scripts/test-adherence-escalation.ts"
   },
   "dependencies": {
     "@hono/node-server": "^1.19.0",
