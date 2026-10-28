@@ -385,7 +385,9 @@ async function ensurePatientAccess(c: any, patientId: string) {
         patientId.replace(/^PT-/i, "P-"),
     ];
 
-    const patientQuery = admin.from("patients").select("id, workspace_id, profile_id, status");
+    const patientQuery = admin
+        .from("patients")
+        .select("id, workspace_id, profile_id, status, full_name, contact_email");
     const { data: patient, error } = typeof (patientQuery as any).in === "function"
         ? await (patientQuery as any).in("id", candidateIds).eq("is_deleted", false).limit(1).maybeSingle()
         : await patientQuery.eq("id", patientId).eq("is_deleted", false).maybeSingle();
@@ -941,11 +943,31 @@ patientsRouter.post("/:id/resend-invite", async (c) => {
     const authAdmin = getAuthAdminClient();
     const config = getConfig();
 
+    let recipientEmail = (patient as any).contact_email || "";
+    let recipientName = (patient as any).full_name || "Patient";
+
+    if (!recipientEmail && patient.profile_id) {
+        const { data: profile } = await admin
+            .from("profiles")
+            .select("email, full_name")
+            .eq("id", patient.profile_id)
+            .maybeSingle();
+
+        if (profile?.email) {
+            recipientEmail = profile.email;
+            if (profile.full_name) recipientName = profile.full_name;
+        }
+    }
+
+    if (!recipientEmail) {
+        throw ApiError.badRequest("This patient does not have a contact email on file.");
+    }
+
     let actionLink: string | null = null;
     let deliveryMethod = "supabase_invite";
 
     const { error: inviteError } = await authAdmin.auth.admin.inviteUserByEmail(
-        patient.contact_email,
+        recipientEmail,
         {
             data: { role: "patient", patient_id: patient.id },
             redirectTo: config.patientActivationUrl,
@@ -957,7 +979,7 @@ patientsRouter.post("/:id/resend-invite", async (c) => {
         if (msg.includes("already registered") || msg.includes("already exists") || msg.includes("user already")) {
             const { data: linkData, error: linkErr } = await authAdmin.auth.admin.generateLink({
                 type: "recovery",
-                email: patient.contact_email,
+                email: recipientEmail,
                 options: {
                     redirectTo: config.patientActivationUrl,
                 },
@@ -976,13 +998,13 @@ patientsRouter.post("/:id/resend-invite", async (c) => {
     if (actionLink) {
         deliveryMethod = "email_service";
         await sendEmail({
-            to: patient.contact_email,
+            to: recipientEmail,
             subject: "MedNova Health — Activate Your Patient Account",
-            text: `Hello ${patient.full_name},\n\nPlease use the following link to set your password and activate your MedNova Health patient account:\n\n${actionLink}\n\nThis link is valid for 24 hours.\n\n--\nMedNova Care Team`,
+            text: `Hello ${recipientName},\n\nPlease use the following link to set your password and activate your MedNova Health patient account:\n\n${actionLink}\n\nThis link is valid for 24 hours.\n\n--\nMedNova Care Team`,
             html: `
                 <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 24px;">
                   <h2 style="color: #0f172a;">Welcome to MedNova Health</h2>
-                  <p>Hello ${patient.full_name},</p>
+                  <p>Hello ${recipientName},</p>
                   <p>Your care team has sent you a new activation link to create your password and access your patient portal:</p>
                   <p style="margin: 24px 0;">
                     <a href="${actionLink}" style="background-color: #2563eb; color: #ffffff; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: bold; display: inline-block;">
@@ -1008,7 +1030,7 @@ patientsRouter.post("/:id/resend-invite", async (c) => {
 
     return c.json({
         success: true,
-        message: `Activation email sent to ${patient.contact_email}`,
+        message: `Activation email sent to ${recipientEmail}`,
         deliveryMethod,
     });
 });
