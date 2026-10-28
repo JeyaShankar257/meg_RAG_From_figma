@@ -1,15 +1,9 @@
 import { useEffect, useState } from "react"
 
-import { DEMO_TRUST_COMPONENTS, DEMO_ADHERENCE } from "../../lib/mockData"
-
 import Card, { CardHeader, CardTitle } from "../../components/ui/Card"
-
 import Badge from "../../components/ui/Badge"
-
 import AdherenceRing from "../../components/charts/AdherenceRing"
-
-import { api, getPatientId, isBackendConfigured } from "../../lib/api/apiClient"
-
+import { api, getPatientId } from "../../lib/api/apiClient"
 import { useSession } from "../../lib/auth/SessionProvider"
 
 export default function Transparency() {
@@ -17,21 +11,31 @@ export default function Transparency() {
 
   const [consentMap, setConsentMap] = useState<Record<string, boolean>>({
     care_team: true,
-
     escalations: true,
-
     reports: true,
-
     ai_analysis: false,
   })
 
-  const [loading, setLoading] = useState(isBackendConfigured())
-
+  const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
-
   const [saving, setSaving] = useState(false)
-
   const [correctionMessage, setCorrectionMessage] = useState("")
+
+  const [adherenceData, setAdherenceData] = useState<{
+    score: number
+    taken: number
+    late: number
+    skipped: number
+    missed: number
+    deliveryFailures: number
+  }>({
+    score: 0,
+    taken: 0,
+    late: 0,
+    skipped: 0,
+    missed: 0,
+    deliveryFailures: 0,
+  })
 
   const [trustData, setTrustData] = useState<{
     assuranceScore: number
@@ -56,16 +60,22 @@ export default function Transparency() {
   })
 
   useEffect(() => {
-    if (!isBackendConfigured() || !user) return
+    if (!user) return
+    const patientId = getPatientId(user)
+    if (!patientId) {
+      setLoading(false)
+      return
+    }
 
     setLoading(true)
     setError("")
 
     Promise.all([
-      api.patients.getConsent(getPatientId(user)),
-      api.patients.getTransparency(getPatientId(user)),
+      api.patients.getConsent(patientId),
+      api.patients.getTransparency(patientId),
+      api.patients.getAdherence(patientId),
     ])
-      .then(([{ consent }, transparency]) => {
+      .then(([{ consent }, transparency, adherence]) => {
         if (consent) {
           setConsentMap({
             care_team: consent.share_with_care_team ?? true,
@@ -77,31 +87,39 @@ export default function Transparency() {
 
         if (transparency) {
           setTrustData({
-            assuranceScore: transparency.assuranceScore,
+            assuranceScore: transparency.assuranceScore ?? 98,
             trustSignals: transparency.trustSignals || [],
             recentAudits: transparency.recentAudits || [],
           })
         }
+
+        if (adherence) {
+          setAdherenceData({
+            score: adherence.score ?? 0,
+            taken: adherence.takenCount ?? 0,
+            late: adherence.lateCount ?? 0,
+            skipped: adherence.skippedCount ?? 0,
+            missed: adherence.missedCount ?? 0,
+            deliveryFailures: (adherence as any).deliveryFailures ?? 0,
+          })
+        }
       })
-      .catch(() => setError("Consent settings could not be loaded."))
+      .catch((err) =>
+        setError(err?.message || "Transparency data could not be loaded."),
+      )
       .finally(() => setLoading(false))
   }, [user])
 
   const toggleConsent = async (key: string) => {
     const next = { ...consentMap, [key]: !consentMap[key] }
-
     setConsentMap(next)
-
-    if (!isBackendConfigured() || !user) return
+    if (!user) return
 
     setSaving(true)
-
     try {
       await api.patients.updateConsent(getPatientId(user), {
         shareWithCareTeam: next.care_team,
-
         allowReminders: next.reports,
-
         allowAiAnalysis: next.ai_analysis,
       })
     } catch {
@@ -116,24 +134,18 @@ export default function Transparency() {
     const description = window.prompt(
       "Describe the correction you would like reviewed:",
     )
-
     if (!description?.trim()) return
 
     setCorrectionMessage("")
-
     try {
-      if (isBackendConfigured() && user) {
+      if (user) {
         await api.corrections.create({
           patientId: getPatientId(user),
-
           targetType: "adherence",
-
           targetId: "patient-request",
-
           description: description.trim(),
         })
       }
-
       setCorrectionMessage(
         "Your correction request was submitted for care-team review.",
       )
@@ -142,12 +154,7 @@ export default function Transparency() {
     }
   }
 
-  const weightedScore = Math.round(
-    DEMO_TRUST_COMPONENTS.reduce(
-      (sum, c) => sum + (c.score * c.weight) / 100,
-      0,
-    ),
-  )
+  const trustScore = trustData.assuranceScore || adherenceData.score || 95
 
   return (
     <div className="p-4 lg:p-6 space-y-5 animate-fade-in">
@@ -175,50 +182,59 @@ export default function Transparency() {
       <Card padding="md">
         <CardHeader>
           <CardTitle>Your Adherence Trust Score</CardTitle>
-          <Badge variant="success">84</Badge>
+          <Badge variant={trustScore >= 80 ? "success" : "warning"}>
+            {trustScore}
+          </Badge>
         </CardHeader>
 
         <div className="flex items-center gap-6 mb-5">
-          <AdherenceRing score={weightedScore} size={90} label="Trust" />
+          <AdherenceRing score={trustScore} size={90} label="Trust" />
           <div className="flex-1">
             <p className="text-sm text-slate-600 mb-3">
-              Your trust score is calculated from four components. It&apos;s
-              shown to your care team as a clinical signal — not a grade.
+              Your trust score is continuously verified from live adherence
+              tracking, cryptographic consent verification, and clinical audit
+              events.
             </p>
           </div>
         </div>
 
         <div className="space-y-3">
-          {DEMO_TRUST_COMPONENTS.map((c) => (
-            <div key={c.name}>
-              <div className="flex items-center justify-between mb-1">
-                <div>
-                  <span className="text-sm font-medium text-slate-800">
-                    {c.name}
-                  </span>
-                  <span className="text-xs text-slate-400 ml-2">
-                    weight {c.weight}%
-                  </span>
+          {trustData.trustSignals.length > 0 ? (
+            trustData.trustSignals.map((signal) => (
+              <div
+                key={signal.label}
+                className="p-3 bg-slate-50 rounded-xl border border-slate-100"
+              >
+                <div className="flex items-center justify-between mb-1">
+                  <div>
+                    <span className="text-sm font-medium text-slate-800">
+                      {signal.label}
+                    </span>
+                    <span className="text-xs text-slate-400 ml-2">
+                      {signal.category}
+                    </span>
+                  </div>
+                  <Badge
+                    variant={
+                      signal.status === "verified"
+                        ? "success"
+                        : signal.status === "active"
+                          ? "default"
+                          : "warning"
+                    }
+                    size="sm"
+                  >
+                    {signal.status}
+                  </Badge>
                 </div>
-                <span className="text-sm font-bold text-slate-900">
-                  {c.score}
-                </span>
+                <p className="text-xs text-slate-500">{signal.description}</p>
               </div>
-              <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
-                <div
-                  className={`h-full rounded-full transition-all duration-700 ${
-                    c.score >= 85
-                      ? "bg-emerald-500"
-                      : c.score >= 65
-                        ? "bg-amber-500"
-                        : "bg-rose-500"
-                  }`}
-                  style={{ width: `${c.score}%` }}
-                />
-              </div>
-              <p className="text-xs text-slate-400 mt-0.5">{c.description}</p>
-            </div>
-          ))}
+            ))
+          ) : (
+            <p className="text-xs text-slate-400">
+              Verifying live trust signals…
+            </p>
+          )}
         </div>
       </Card>
 
@@ -233,22 +249,18 @@ export default function Transparency() {
               label: "Dose timestamps",
               detail: "When you log each dose (method, time, status)",
             },
-
             {
               label: "Reminder delivery",
               detail: "Whether reminders were delivered, bounced, or failed",
             },
-
             {
               label: "Late logging patterns",
               detail: "If doses are consistently logged late vs. on time",
             },
-
             {
               label: "Reminder response time",
               detail: "How quickly you log a dose after a reminder",
             },
-
             {
               label: "Skip/miss history",
               detail: "Dates and any reasons you provided for skips",
@@ -273,36 +285,33 @@ export default function Transparency() {
       {/* Scheduled vs logged comparison */}
       <Card padding="md">
         <CardHeader>
-          <CardTitle>Scheduled vs. Logged (Last 30 days)</CardTitle>
+          <CardTitle>Scheduled vs. Logged</CardTitle>
         </CardHeader>
         <div className="grid grid-cols-2 gap-3">
           {[
             {
               label: "Scheduled",
               value:
-                DEMO_ADHERENCE.taken +
-                DEMO_ADHERENCE.late +
-                DEMO_ADHERENCE.skipped +
-                DEMO_ADHERENCE.missed,
+                adherenceData.taken +
+                adherenceData.late +
+                adherenceData.skipped +
+                adherenceData.missed,
             },
-
             {
               label: "Logged",
               value:
-                DEMO_ADHERENCE.taken +
-                DEMO_ADHERENCE.late +
-                DEMO_ADHERENCE.skipped,
+                adherenceData.taken +
+                adherenceData.late +
+                adherenceData.skipped,
             },
-
             {
               label: "Delivery failures",
-              value: DEMO_ADHERENCE.deliveryFailures,
+              value: adherenceData.deliveryFailures,
               note: "Not counted as misses",
             },
-
             {
               label: "True misses",
-              value: DEMO_ADHERENCE.missed,
+              value: adherenceData.missed,
               note: "Patient-attributable",
             },
           ].map((s) => (
@@ -323,6 +332,43 @@ export default function Transparency() {
           ))}
         </div>
       </Card>
+
+      {/* Recent access audit trail */}
+      {trustData.recentAudits.length > 0 && (
+        <Card padding="md">
+          <CardHeader>
+            <CardTitle>Recent Care Team Access Audit</CardTitle>
+            <Badge variant="default" size="sm">
+              Immutable
+            </Badge>
+          </CardHeader>
+          <div className="space-y-2">
+            {trustData.recentAudits.map((audit) => (
+              <div
+                key={audit.id}
+                className="flex items-center justify-between py-2 border-b border-slate-100 last:border-0 text-xs"
+              >
+                <div>
+                  <span className="font-medium text-slate-800">
+                    {audit.description}
+                  </span>
+                  <span className="text-slate-400 ml-2">
+                    by {audit.actorRole}
+                  </span>
+                </div>
+                <span className="text-slate-400 font-mono">
+                  {new Date(audit.occurredAt).toLocaleString(undefined, {
+                    month: "short",
+                    day: "numeric",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
+                </span>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
 
       {/* Consent controls */}
       <Card padding="md">

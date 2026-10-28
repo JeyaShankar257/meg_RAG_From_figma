@@ -1,5 +1,6 @@
 -- Add missing INSERT and DELETE RLS policies for ai_analyses and ai_citations
 
+DROP POLICY IF EXISTS "AI analyses insertable by doctor, admin, or service role" ON ai_analyses;
 CREATE POLICY "AI analyses insertable by doctor, admin, or service role"
 ON ai_analyses FOR INSERT
 WITH CHECK (
@@ -9,6 +10,7 @@ WITH CHECK (
   OR auth.jwt() IS NULL
 );
 
+DROP POLICY IF EXISTS "AI citations insertable by doctor, admin, or service role" ON ai_citations;
 CREATE POLICY "AI citations insertable by doctor, admin, or service role"
 ON ai_citations FOR INSERT
 WITH CHECK (
@@ -21,6 +23,7 @@ WITH CHECK (
   OR auth.jwt() IS NULL
 );
 
+DROP POLICY IF EXISTS "AI analyses deletable by admin or service role" ON ai_analyses;
 CREATE POLICY "AI analyses deletable by admin or service role"
 ON ai_analyses FOR DELETE
 USING (
@@ -29,6 +32,7 @@ USING (
   OR auth.jwt() IS NULL
 );
 
+DROP POLICY IF EXISTS "AI citations deletable by admin or service role" ON ai_citations;
 CREATE POLICY "AI citations deletable by admin or service role"
 ON ai_citations FOR DELETE
 USING (

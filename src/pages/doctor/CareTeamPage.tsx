@@ -1,12 +1,6 @@
 import { useState, useEffect, useCallback } from "react"
 import { useParams, Link } from "react-router-dom"
-import {
-  DEMO_PATIENTS,
-  DEMO_ESCALATIONS,
-  DEMO_CARE_TEAM,
-  DEMO_SPARKLINE,
-} from "../../lib/mockData"
-import type { PipelineStage, AgentLog } from "../../lib/types"
+import type { Patient, PipelineStage, AgentLog } from "../../lib/types"
 import Card, { CardHeader, CardTitle } from "../../components/ui/Card"
 import Badge from "../../components/ui/Badge"
 import Button from "../../components/ui/Button"
@@ -25,45 +19,38 @@ const CANONICAL_STAGE_DEFS = [
     key: "pattern_detection_agent",
     name: "Pattern Detection Agent",
     agentName: "pattern_detection_agent",
-    description: "End-of-day daily evaluation of adherence score, streak, and skips",
+    description:
+      "End-of-day daily evaluation of adherence score, streak, and skips",
   },
   {
     key: "patient_warning_agent",
     name: "Patient Health Warning Agent",
     agentName: "patient_warning_agent",
-    description: "Level 1: Personalized drug-specific risk advisory sent to patient",
+    description:
+      "Level 1: Personalized drug-specific risk advisory sent to patient",
   },
   {
     key: "sos_agent",
     name: "Doctor & Guardian SOS Agent",
     agentName: "sos_agent",
-    description: "Level 2: Urgent caregiver alert and care-team emergency escalation",
+    description:
+      "Level 2: Urgent caregiver alert and care-team emergency escalation",
   },
 ]
 
 export default function CareTeamPage() {
   const { patientId } = useParams()
 
-  const [patient, setPatient] = useState(
-    () => DEMO_PATIENTS.find((p) => p.id === patientId) || DEMO_PATIENTS[2],
-  )
-  const [loading, setLoading] = useState(isBackendConfigured())
+  const [patient, setPatient] = useState<Patient | null>(null)
+  const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
   const [successMessage, setSuccessMessage] = useState("")
-
-  const [escalations, setEscalations] = useState<any[]>(() =>
-    isBackendConfigured()
-      ? []
-      : DEMO_ESCALATIONS.filter(
-          (e) =>
-            e.patientId ===
-            (DEMO_PATIENTS.find((p) => p.id === patientId) || DEMO_PATIENTS[2]).id,
-        ),
-  )
-
-  const [careTeam, setCareTeam] = useState(
-    isBackendConfigured() ? [] : DEMO_CARE_TEAM,
-  )
+  const [escalations, setEscalations] = useState<any[]>([])
+  const [careTeam, setCareTeam] = useState<any[]>([])
+  const [sparklineData, setSparklineData] = useState<Array<{
+    date: string
+    value: number
+  }>>([])
 
   const [pipelineStages, setPipelineStages] = useState<PipelineStage[]>(() =>
     CANONICAL_STAGE_DEFS.map((def, idx) => ({
@@ -84,72 +71,88 @@ export default function CareTeamPage() {
     })),
   )
 
-  const [selectedStageKey, setSelectedStageKey] = useState<string>("pattern_detection_agent")
+  const [selectedStageKey, setSelectedStageKey] = useState<string>(
+    "pattern_detection_agent",
+  )
   const [evaluating, setEvaluating] = useState(false)
   const [actionInProgress, setActionInProgress] = useState<string | null>(null)
   const [actionNotes, setActionNotes] = useState("")
-  const [activeActionModal, setActiveActionModal] = useState<{ escId: string; action: string; label: string } | null>(null)
+  const [activeActionModal, setActiveActionModal] = useState<{
+    escId: string
+    action: string
+    label: string
+  } | null>(null)
 
   const loadData = useCallback(() => {
     if (!patientId) return
 
-    if (!isBackendConfigured()) {
-      // In demo mode, load demo patient and build initial 4 stages
-      const found = DEMO_PATIENTS.find((p) => p.id === patientId) || DEMO_PATIENTS[2]
-      setPatient(found)
-      return
-    }
+    setLoading(true)
+    setError("")
 
     Promise.all([
       api.patients.get(patientId).catch(() => null),
       api.escalations.list(patientId).catch(() => ({ escalations: [] })),
       api.careTeam.list().catch(() => ({ members: [] })),
       api.doctor.getPipeline(patientId).catch(() => null),
+      api.patients.getAdherence(patientId).catch(() => null),
     ])
-      .then(([patientResult, escalationsResult, careTeamResult, pipelineResult]) => {
-        if (patientResult?.patient) {
-          setPatient(patientResult.patient)
-        }
-        if (escalationsResult?.escalations) {
-          setEscalations(escalationsResult.escalations)
-        }
-        if (careTeamResult?.members) {
-          setCareTeam(careTeamResult.members)
-        }
+      .then(
+        ([
+          patientResult,
+          escalationsResult,
+          careTeamResult,
+          pipelineResult,
+          adherenceResult,
+        ]) => {
+          if (patientResult?.patient) {
+            setPatient(patientResult.patient)
+          }
+          if (escalationsResult?.escalations) {
+            setEscalations(escalationsResult.escalations)
+          }
+          if (careTeamResult?.members) {
+            setCareTeam(careTeamResult.members)
+          }
+          if (adherenceResult?.sparklineData) {
+            setSparklineData(adherenceResult.sparklineData)
+          }
 
-        if (pipelineResult && pipelineResult.stages) {
-          const apiStages = pipelineResult.stages
-          const mapped: PipelineStage[] = CANONICAL_STAGE_DEFS.map((def) => {
-            const match = apiStages.find((s: any) => s.stageKey === def.key)
-            if (match) {
-              return {
-                id: match.id || `stage-${def.key}`,
-                name: def.name,
-                agentName: match.stageKey,
-                description: def.description,
-                status: match.status === "retrying" ? "running" : match.status,
-                lastRun: match.updatedAt || match.completedAt,
-                logs: (match.logs || []).map((l: any) => ({
-                  id: l.id,
-                  timestamp: l.createdAt || new Date().toISOString(),
-                  level: l.level as "info" | "warn" | "error",
-                  message: l.message,
-                  metadata: l.metadata as Record<string, string | number | boolean> | undefined,
-                })),
+          if (pipelineResult && pipelineResult.stages) {
+            const apiStages = pipelineResult.stages
+            const mapped: PipelineStage[] = CANONICAL_STAGE_DEFS.map((def) => {
+              const match = apiStages.find((s: any) => s.stageKey === def.key)
+              if (match) {
+                return {
+                  id: match.id || `stage-${def.key}`,
+                  name: def.name,
+                  agentName: match.stageKey,
+                  description: def.description,
+                  status:
+                    match.status === "retrying" ? "running" : match.status,
+                  lastRun: match.updatedAt || match.completedAt,
+                  logs: (match.logs || []).map((l: any) => ({
+                    id: l.id,
+                    timestamp: l.createdAt || new Date().toISOString(),
+                    level: l.level as "info" | "warn" | "error",
+                    message: l.message,
+                    metadata:
+                      l.metadata as Record<string, string | number | boolean> | undefined,
+                  })),
+                }
               }
-            }
-            return {
-              id: `stage-${def.key}`,
-              name: def.name,
-              agentName: def.agentName,
-              description: def.description,
-              status: "idle",
-              logs: [],
-            }
-          })
-          setPipelineStages(mapped)
-        }
-      })
+              return {
+                id: `stage-${def.key}`,
+                name: def.name,
+                agentName: def.agentName,
+                description: def.description,
+                status: "idle",
+                logs: [],
+              }
+            })
+            setPipelineStages(mapped)
+          }
+        },
+      )
       .catch(() => setError("Failed to refresh care-team records."))
       .finally(() => setLoading(false))
   }, [patientId])
@@ -159,13 +162,16 @@ export default function CareTeamPage() {
   }, [loadData])
 
   // Trigger End-of-Day Daily Evaluation
-  const handleRunDailyCheck = async (options?: { mockConsecutiveSkips?: number; mockAdherenceRate?: number }) => {
+  const handleRunDailyCheck = async (options?: {
+    mockConsecutiveSkips?: number
+    mockAdherenceRate?: number
+  }) => {
     setEvaluating(true)
     setError("")
     setSuccessMessage("")
 
     try {
-      const targetId = patient.id || patientId || "p-001"
+      const targetId = patient?.id || patientId || "p-001"
       const result = await api.doctor.evaluateDailyPattern(targetId, {
         force: true,
         ...options,
@@ -202,7 +208,9 @@ export default function CareTeamPage() {
         actionNotes,
       )
 
-      setSuccessMessage(`✓ Clinical action [${action.toUpperCase()}] executed and recorded in audit trail.`)
+      setSuccessMessage(
+        `✓ Clinical action [${action.toUpperCase()}] executed and recorded in audit trail.`,
+      )
       setActiveActionModal(null)
       setActionNotes("")
       loadData()
@@ -220,8 +228,9 @@ export default function CareTeamPage() {
     error: "bg-rose-50 text-rose-700 border border-rose-300",
   }
 
-  const selectedStage =
-    pipelineStages.find((s) => s.agentName === selectedStageKey) ||
+  const selectedStage = pipelineStages.find(
+    (s) => s.agentName === selectedStageKey,
+  ) ||
     pipelineStages[1] ||
     pipelineStages[0] || {
       id: "stage-default",
@@ -232,23 +241,36 @@ export default function CareTeamPage() {
       logs: [],
     }
 
-  const patientDisplayName = patient?.name || (patient as any)?.full_name || "Patient"
+  const patientDisplayName =
+    patient?.name || (patient as any)?.full_name || "Patient"
   const patientIdDisplay = patient?.patientId || patient?.id || patientId
 
   return (
     <div className="p-6 max-w-6xl space-y-6 animate-fade-in">
       {/* Header */}
-      {loading && <p className="text-sm text-slate-500">Loading care-team data…</p>}
+      {loading && (
+        <p className="text-sm text-slate-500">Loading care-team data…</p>
+      )}
       {error && (
         <div className="text-sm text-rose-800 bg-rose-50 border border-rose-300 rounded-xl p-3 flex items-center justify-between">
           <span>{error}</span>
-          <button onClick={() => setError("")} className="text-rose-600 font-bold ml-2">×</button>
+          <button
+            onClick={() => setError("")}
+            className="text-rose-600 font-bold ml-2"
+          >
+            ×
+          </button>
         </div>
       )}
       {successMessage && (
         <div className="text-sm text-emerald-900 bg-emerald-50 border border-emerald-300 rounded-xl p-3 flex items-center justify-between animate-fade-in">
           <span className="font-medium">{successMessage}</span>
-          <button onClick={() => setSuccessMessage("")} className="text-emerald-700 font-bold ml-2">×</button>
+          <button
+            onClick={() => setSuccessMessage("")}
+            className="text-emerald-700 font-bold ml-2"
+          >
+            ×
+          </button>
         </div>
       )}
 
@@ -262,9 +284,15 @@ export default function CareTeamPage() {
               ← Back to {patientDisplayName}
             </Link>
           </div>
-          <h1 className="text-2xl font-bold text-slate-900">Care Team Command Center</h1>
+          <h1 className="text-2xl font-bold text-slate-900">
+            Care Team Command Center
+          </h1>
           <p className="text-slate-500 text-sm mt-0.5">
-            Patient ID: <span className="font-mono font-medium text-slate-700">{patientIdDisplay}</span> · 4-Stage Closed-Loop Adherence Pipeline
+            Patient ID:{" "}
+            <span className="font-mono font-medium text-slate-700">
+              {patientIdDisplay}
+            </span>{" "}
+            · 4-Stage Closed-Loop Adherence Pipeline
           </p>
         </div>
 
@@ -289,7 +317,12 @@ export default function CareTeamPage() {
 
           {/* Quick Demo Simulator Buttons */}
           <button
-            onClick={() => handleRunDailyCheck({ mockConsecutiveSkips: 2, mockAdherenceRate: 70 })}
+            onClick={() =>
+              handleRunDailyCheck({
+                mockConsecutiveSkips: 2,
+                mockAdherenceRate: 70,
+              })
+            }
             disabled={evaluating}
             title="Simulate 2 consecutive skips (Level 1 warning)"
             className="text-xs bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 px-2.5 py-1.5 rounded-lg font-medium transition"
@@ -297,7 +330,12 @@ export default function CareTeamPage() {
             Simulate 2 Skips (Level 1)
           </button>
           <button
-            onClick={() => handleRunDailyCheck({ mockConsecutiveSkips: 3, mockAdherenceRate: 50 })}
+            onClick={() =>
+              handleRunDailyCheck({
+                mockConsecutiveSkips: 3,
+                mockAdherenceRate: 50,
+              })
+            }
             disabled={evaluating}
             title="Simulate 3 consecutive skips (Level 2 SOS)"
             className="text-xs bg-rose-50 hover:bg-rose-100 text-rose-800 border border-rose-300 px-2.5 py-1.5 rounded-lg font-medium transition"
@@ -309,7 +347,8 @@ export default function CareTeamPage() {
 
       {/* Escalation Banners (including Level 2 Urgent Red SOS Alert) */}
       {escalations.map((esc) => {
-        const isUrgentOrCritical = esc.severity === "urgent" || esc.severity === "critical"
+        const isUrgentOrCritical =
+          esc.severity === "urgent" || esc.severity === "critical"
         const isOpen = esc.status === "open"
 
         return (
@@ -327,10 +366,17 @@ export default function CareTeamPage() {
               <div className="flex items-start gap-3.5">
                 <div
                   className={`w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 shadow-sm ${
-                    isUrgentOrCritical ? "bg-rose-600 text-white" : "bg-amber-500 text-white"
+                    isUrgentOrCritical
+                      ? "bg-rose-600 text-white"
+                      : "bg-amber-500 text-white"
                   }`}
                 >
-                  <svg viewBox="0 0 24 24" fill="currentColor" width={22} height={22}>
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="currentColor"
+                    width={22}
+                    height={22}
+                  >
                     <path d="M12 2L1 21h22L12 2zm0 3.5L20.5 19h-17L12 5.5zM11 10v4h2v-4h-2zm0 6v2h2v-2h-2z" />
                   </svg>
                 </div>
@@ -357,16 +403,25 @@ export default function CareTeamPage() {
                   </div>
 
                   <p className="text-sm font-semibold text-slate-900 mt-1">
-                    {esc.reasoning || esc.rootCause || "Severe adherence anomaly detected requiring doctor evaluation."}
+                    {esc.reasoning ||
+                      esc.rootCause ||
+                      "Severe adherence anomaly detected requiring doctor evaluation."}
                   </p>
 
                   {/* Guardian Emergency Contact Display for SOS */}
-                  {((patient as any)?.guardian_name || (patient as any)?.guardian_email) && (
+                  {((patient as any)?.guardian_name ||
+                    (patient as any)?.guardian_email) && (
                     <div className="mt-2.5 p-2.5 rounded-xl bg-white/80 border border-rose-200 text-xs text-rose-950 flex items-center gap-2">
-                      <span className="font-semibold text-rose-700">Emergency Guardian:</span>
-                      <span>{(patient as any)?.guardian_name || "Primary Caregiver"}</span>
+                      <span className="font-semibold text-rose-700">
+                        Emergency Guardian:
+                      </span>
+                      <span>
+                        {(patient as any)?.guardian_name || "Primary Caregiver"}
+                      </span>
                       <span>·</span>
-                      <span className="font-mono text-rose-800 font-medium">{(patient as any)?.guardian_email}</span>
+                      <span className="font-mono text-rose-800 font-medium">
+                        {(patient as any)?.guardian_email}
+                      </span>
                       {(patient as any)?.guardian_phone && (
                         <>
                           <span>·</span>
@@ -381,14 +436,24 @@ export default function CareTeamPage() {
 
                   <div className="flex items-center gap-3 mt-3 text-xs text-slate-500 flex-wrap">
                     <span>
-                      Confidence: <strong>{Math.round((esc.confidence || 0.95) * 100)}%</strong>
+                      Confidence:{" "}
+                      <strong>
+                        {Math.round((esc.confidence || 0.95) * 100)}%
+                      </strong>
                     </span>
                     <span>·</span>
                     <span>
-                      Model: <strong className="font-mono">{esc.modelVersion || esc.aiModelVersion || "mednova-v1"}</strong>
+                      Model:{" "}
+                      <strong className="font-mono">
+                        {esc.modelVersion || esc.aiModelVersion || "mednova-v1"}
+                      </strong>
                     </span>
                     <span>·</span>
-                    <span>{new Date(esc.createdAt || esc.created_at || Date.now()).toLocaleString()}</span>
+                    <span>
+                      {new Date(
+                        esc.createdAt || esc.created_at || Date.now(),
+                      ).toLocaleString()}
+                    </span>
                   </div>
                 </div>
               </div>
@@ -476,7 +541,8 @@ export default function CareTeamPage() {
           <div>
             <CardTitle>4-Tier Closed-Loop Adherence Pipeline</CardTitle>
             <p className="text-xs text-slate-500 mt-0.5">
-              Event-driven proactive monitoring, daily pattern detection, and autonomous tiered safety escalations
+              Event-driven proactive monitoring, daily pattern detection, and
+              autonomous tiered safety escalations
             </p>
           </div>
           <Badge variant="ai">Autonomous Multi-Agent Workflow</Badge>
@@ -485,7 +551,9 @@ export default function CareTeamPage() {
         {/* 4 Stages Visual Stepper */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-3 my-4">
           {CANONICAL_STAGE_DEFS.map((def, idx) => {
-            const currentStage: PipelineStage = pipelineStages.find((s) => s.agentName === def.key) || {
+            const currentStage: PipelineStage = pipelineStages.find(
+              (s) => s.agentName === def.key,
+            ) || {
               id: def.key,
               name: def.name,
               agentName: def.agentName,
@@ -513,13 +581,16 @@ export default function CareTeamPage() {
                     </span>
                     <span
                       className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded-md ${
-                        stageStatusColor[currentStage.status] || stageStatusColor.idle
+                        stageStatusColor[currentStage.status] ||
+                        stageStatusColor.idle
                       }`}
                     >
                       {currentStage.status}
                     </span>
                   </div>
-                  <h4 className="text-xs font-bold text-slate-900 leading-snug">{def.name}</h4>
+                  <h4 className="text-xs font-bold text-slate-900 leading-snug">
+                    {def.name}
+                  </h4>
                   <p className="text-[11px] text-slate-500 mt-1 leading-relaxed line-clamp-2">
                     {def.description}
                   </p>
@@ -551,7 +622,9 @@ export default function CareTeamPage() {
               </h3>
             </div>
             <div className="flex items-center gap-1.5 text-xs text-slate-500">
-              <span className="font-mono text-slate-400">[{selectedStage.agentName}]</span>
+              <span className="font-mono text-slate-400">
+                [{selectedStage.agentName}]
+              </span>
               <span>·</span>
               <span>{(selectedStage.logs || []).length} recorded entries</span>
             </div>
@@ -559,7 +632,9 @@ export default function CareTeamPage() {
 
           <div className="bg-slate-950 rounded-xl p-4 font-mono text-xs shadow-inner border border-slate-800 max-h-60 overflow-y-auto space-y-2">
             {(!selectedStage.logs || selectedStage.logs.length === 0) && (
-              <p className="text-slate-600 italic">No stage execution logs available yet.</p>
+              <p className="text-slate-600 italic">
+                No stage execution logs available yet.
+              </p>
             )}
 
             {(selectedStage.logs || []).map((log: AgentLog) => (
@@ -611,7 +686,7 @@ export default function CareTeamPage() {
           <CardHeader>
             <CardTitle>Adherence Reliability Trend</CardTitle>
           </CardHeader>
-          <ScoreTrendChart data={DEMO_SPARKLINE} height={160} />
+          <ScoreTrendChart data={sparklineData} height={160} />
         </Card>
 
         <Card padding="md">
@@ -620,14 +695,16 @@ export default function CareTeamPage() {
           </CardHeader>
           <div className="space-y-3">
             {careTeam.map((m: any) => {
-              const memberName = m.name || m.full_name || m.email || "Care Team Member"
-              const initials = memberName
-                .split(" ")
-                .filter(Boolean)
-                .map((n: string) => n[0])
-                .join("")
-                .slice(0, 2)
-                .toUpperCase() || "CM"
+              const memberName =
+                m.name || m.full_name || m.email || "Care Team Member"
+              const initials =
+                memberName
+                  .split(" ")
+                  .filter(Boolean)
+                  .map((n: string) => n[0])
+                  .join("")
+                  .slice(0, 2)
+                  .toUpperCase() || "CM"
 
               return (
                 <div key={m.id} className="flex items-center gap-3">
@@ -635,8 +712,12 @@ export default function CareTeamPage() {
                     {initials}
                   </div>
                   <div>
-                    <p className="text-sm font-semibold text-slate-800">{memberName}</p>
-                    <p className="text-xs text-slate-500">{m.role || "Care Team"}</p>
+                    <p className="text-sm font-semibold text-slate-800">
+                      {memberName}
+                    </p>
+                    <p className="text-xs text-slate-500">
+                      {m.role || "Care Team"}
+                    </p>
                   </div>
                 </div>
               )
@@ -649,9 +730,12 @@ export default function CareTeamPage() {
       {activeActionModal && (
         <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 animate-scale-up">
-            <h3 className="text-lg font-bold text-slate-900 mb-1">{activeActionModal.label}</h3>
+            <h3 className="text-lg font-bold text-slate-900 mb-1">
+              {activeActionModal.label}
+            </h3>
             <p className="text-xs text-slate-500 mb-4">
-              Enter clinical rationale or notes to be recorded in the patient audit trail.
+              Enter clinical rationale or notes to be recorded in the patient
+              audit trail.
             </p>
 
             <textarea

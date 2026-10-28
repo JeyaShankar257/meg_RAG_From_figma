@@ -4,8 +4,8 @@ import { useSession } from "../../lib/auth/SessionProvider"
 
 import { useState, useEffect, useCallback } from "react"
 
-import { DEMO_ESCALATIONS, DEMO_PATIENTS } from "../../lib/mockData"
 import { api, isBackendConfigured } from "../../lib/api/apiClient"
+
 import type { Patient } from "../../lib/types"
 
 const navItems = [
@@ -13,15 +13,21 @@ const navItems = [
 
   {
     to: "/doctor/patients/p-001",
+
     label: "Patients",
+
     icon: UsersIcon,
+
     exact: false,
   },
 
   {
     to: "/doctor/settings",
+
     label: "Settings",
+
     icon: SettingsIcon,
+
     exact: true,
   },
 ]
@@ -33,33 +39,35 @@ export default function DoctorShell() {
 
   const [notifOpen, setNotifOpen] = useState(false)
 
-  const [patients, setPatients] = useState<Patient[]>(
-    isBackendConfigured() ? [] : DEMO_PATIENTS,
-  )
-  const [patientsLoading, setPatientsLoading] = useState(isBackendConfigured())
+  const [patients, setPatients] = useState<Patient[]>([])
+
+  const [patientsLoading, setPatientsLoading] = useState(true)
+
   const [sidebarError, setSidebarError] = useState("")
-  const [escalationCount, setEscalationCount] = useState(() =>
-    isBackendConfigured()
-      ? 0
-      : DEMO_ESCALATIONS.filter((e) => e.status === "open").length,
-  )
+
+  const [escalationCount, setEscalationCount] = useState(0)
 
   const loadSidebarData = useCallback(() => {
-    if (!isBackendConfigured()) return
     setPatientsLoading(true)
+
     setSidebarError("")
 
     Promise.all([api.patients.list(), api.escalations.list()])
+
       .then(([patientsResult, escalationsResult]) => {
         setPatients(patientsResult.patients)
+
         const open = (escalationsResult.escalations as Array<{
           status?: string
         }>).filter((e) => e.status === "open")
+
         setEscalationCount(open.length)
       })
+
       .catch((err) => {
         setSidebarError(err?.message || "Failed to load assigned patients.")
       })
+
       .finally(() => setPatientsLoading(false))
   }, [])
 
@@ -70,13 +78,20 @@ export default function DoctorShell() {
   const openEscalations = escalationCount
 
   const doctorName = user?.fullName || "Dr. Jeya Shankar M"
+
   const doctorInitials =
     doctorName
+
       .replace(/^Dr\.\s*/i, "")
+
       .split(" ")
+
       .map((n) => n[0])
+
       .slice(0, 2)
+
       .join("") || "DR"
+
   const workspaceLabel = user?.workspaceId
     ? `Workspace: ${user.workspaceId.slice(0, 8)}…`
     : "MedNova Clinic"

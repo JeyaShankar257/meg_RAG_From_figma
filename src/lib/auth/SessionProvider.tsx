@@ -28,7 +28,9 @@ interface SessionContextValue {
 
   signIn: (
     email: string,
+
     password: string,
+
     portal: PortalRole,
   ) => Promise<ApiUser>
 
@@ -61,11 +63,14 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
     try {
       let response: { user: ApiUser }
+
       try {
         response = await api.auth.me()
       } catch {
         const refreshed = await api.auth.refresh(getRefreshToken()!)
+
         saveSessionTokens(refreshed.token, refreshed.refreshToken)
+
         response = await api.auth.me()
       }
 
@@ -99,6 +104,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
       return response.user
     },
+
     [],
   )
 
@@ -114,6 +120,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
   const value = useMemo(
     () => ({ user, loading, signIn, signOut, refresh }),
+
     [loading, refresh, signIn, signOut, user],
   )
 
@@ -132,9 +139,11 @@ export function useSession(): SessionContextValue {
 
 export function RequireRole({
   role,
+
   children,
 }: {
   role: PortalRole
+
   children: React.ReactNode
 }) {
   const { user, loading } = useSession()
@@ -166,8 +175,10 @@ export function RequireRole({
       if (!hasPortalAccess) {
         navigate(`/${role}/login`, {
           replace: true,
+
           state: {
             from: location.pathname,
+
             error:
               user && !isApproved
                 ? "Your doctor account is pending administrator approval."
@@ -185,12 +196,19 @@ export function RequireRole({
     }
   }, [
     hasPortalAccess,
+
     isApproved,
+
     isPatientActive,
+
     loading,
+
     location.pathname,
+
     navigate,
+
     role,
+
     user,
   ])
 

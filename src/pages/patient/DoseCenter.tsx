@@ -16,35 +16,6 @@ interface DoseEntry {
   reason?: string
 }
 
-const todayDoses: DoseEntry[] = [
-  {
-    id: "d1",
-    name: "Metformin",
-    strength: "1000",
-    unit: "mg",
-    scheduledTime: "8:00 AM",
-    status: "taken",
-    loggedAt: "8:04 AM",
-  },
-  {
-    id: "d2",
-    name: "Amlodipine",
-    strength: "5",
-    unit: "mg",
-    scheduledTime: "8:00 AM",
-    status: "taken",
-    loggedAt: "8:04 AM",
-  },
-  {
-    id: "d3",
-    name: "Metformin",
-    strength: "1000",
-    unit: "mg",
-    scheduledTime: "7:00 PM",
-    status: "pending",
-  },
-]
-
 const SKIP_REASONS = [
   "Felt unwell",
   "Forgot",
@@ -57,10 +28,8 @@ const SKIP_REASONS = [
 export default function DoseCenter() {
   const { user } = useSession()
 
-  const [doses, setDoses] = useState<DoseEntry[]>(
-    isBackendConfigured() ? [] : todayDoses,
-  )
-  const [loading, setLoading] = useState(isBackendConfigured())
+  const [doses, setDoses] = useState<DoseEntry[]>([])
+  const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
   const [logging, setLogging] = useState<string | null>(null)
   const [skippingId, setSkippingId] = useState<string | null>(null)
@@ -68,7 +37,12 @@ export default function DoseCenter() {
   const [justTaken, setJustTaken] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!isBackendConfigured() || !user) return
+    if (!user) return
+    const patientId = getPatientId(user)
+    if (!patientId) {
+      setLoading(false)
+      return
+    }
 
     setLoading(true)
     setError("")
@@ -353,10 +327,7 @@ export default function DoseCenter() {
       </div>
 
       {/* Adherence Guidance Card */}
-      <Card
-        padding="md"
-        className="bg-teal-50/60 border border-teal-100"
-      >
+      <Card padding="md" className="bg-teal-50/60 border border-teal-100">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-full bg-teal-100 flex items-center justify-center flex-shrink-0 text-teal-700">
             <svg
@@ -376,7 +347,9 @@ export default function DoseCenter() {
               Simple Daily Dose Tracking
             </p>
             <p className="text-xs text-teal-800 mt-0.5">
-              Stay consistent with your care plan. Simply tap <strong>Take Dose</strong> whenever you take your medication, or <strong>Skip Dose</strong> if advised or unable.
+              Stay consistent with your care plan. Simply tap{" "}
+              <strong>Take Dose</strong> whenever you take your medication, or{" "}
+              <strong>Skip Dose</strong> if advised or unable.
             </p>
           </div>
         </div>

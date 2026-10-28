@@ -1,6 +1,10 @@
-import { useEffect, useState } from "react";
-import { DEMO_REPORTS } from "../../lib/mockData";
-import type { PatientUploadedReport } from "../../lib/types";
+import { useEffect, useState } from "react"
+
+import type {
+  PatientUploadedReport,
+  PatientAdherenceSummary,
+} from "../../lib/types"
+
 import {
   addPatientUploadedReport,
   formatFileSize,
@@ -8,205 +12,361 @@ import {
   REPORT_CATEGORY_LABELS,
   REPORT_INDEXING_LABELS,
   setPatientReportIndexingStatus,
-} from "../../lib/patientReports";
-import { getRagService } from "../../lib/rag";
-import { api, getPatientId, isBackendConfigured } from "../../lib/api/apiClient";
-import { useSession } from "../../lib/auth/SessionProvider";
-import Card from "../../components/ui/Card";
-import Badge from "../../components/ui/Badge";
-import Button from "../../components/ui/Button";
-import Input, { Select, Textarea } from "../../components/ui/Input";
-import StatusPill from "../../components/ui/StatusPill";
-import AdherenceRing from "../../components/charts/AdherenceRing";
+} from "../../lib/patientReports"
 
-const PATIENT_ID = "p-001";
-const PATIENT_NAME = "Marcus Rivera";
-const MAX_FILE_SIZE = 2 * 1024 * 1024;
-const ACCEPTED_FILE_TYPES = ["application/pdf", "image/jpeg", "image/png"];
+import { getRagService } from "../../lib/rag"
+
+import { api, getPatientId, isBackendConfigured } from "../../lib/api/apiClient"
+
+import { useSession } from "../../lib/auth/SessionProvider"
+
+import Card from "../../components/ui/Card"
+
+import Badge from "../../components/ui/Badge"
+
+import Button from "../../components/ui/Button"
+
+import Input, { Select, Textarea } from "../../components/ui/Input"
+
+import StatusPill from "../../components/ui/StatusPill"
+
+import AdherenceRing from "../../components/charts/AdherenceRing"
+
+const MAX_FILE_SIZE = 2 * 1024 * 1024
+
+const ACCEPTED_FILE_TYPES = ["application/pdf", "image/jpeg", "image/png"]
 
 const TREND_EMOJIS: Record<string, string> = {
   improving: "↑",
+
   stable: "→",
+
   declining: "↓",
-};
+
+  up: "↑",
+
+  down: "↓",
+}
 
 const ENCOURAGEMENTS: Record<string, string> = {
   improving: "You're making real progress. Keep building the habit!",
+
+  up: "You're making real progress. Keep building the habit!",
+
   stable: "Staying consistent — that's the foundation of good adherence.",
+
   declining: "This week was tougher, but tomorrow is a new start.",
-};
+
+  down: "This week was tougher, but tomorrow is a new start.",
+}
 
 function readFileAsDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result));
-    reader.onerror = () => reject(new Error("The selected file could not be read."));
-    reader.readAsDataURL(file);
-  });
+    const reader = new FileReader()
+
+    reader.onload = () => resolve(String(reader.result))
+
+    reader.onerror = () =>
+      reject(new Error("The selected file could not be read."))
+
+    reader.readAsDataURL(file)
+  })
 }
 
 async function openReport(report: PatientUploadedReport) {
-  const url = isBackendConfigured() && report.id
-    ? (await api.reports.getViewUrl(report.id)).signedUrl
-    : report.fileDataUrl;
-  if (url) window.open(url, "_blank", "noopener,noreferrer");
+  const url =
+    isBackendConfigured() && report.id
+      ? (await api.reports.getViewUrl(report.id)).signedUrl
+      : report.fileDataUrl
+
+  if (url) window.open(url, "_blank", "noopener,noreferrer")
 }
 
 export default function Reports() {
-  const { user } = useSession();
-  const patientId = user ? getPatientId(user) : PATIENT_ID;
-  const [uploadedReports, setUploadedReports] = useState(() =>
-    isBackendConfigured() ? [] : getPatientUploadedReports(patientId)
-  );
+  const { user } = useSession()
+
+  const patientId = user ? getPatientId(user) : ""
+
+  const [uploadedReports, setUploadedReports] =
+    useState<PatientUploadedReport[]>([])
+
+  const [liveAdherence, setLiveAdherence] =
+    useState<PatientAdherenceSummary | null>(null)
+
   const [form, setForm] = useState({
     title: "",
+
     category: "blood_test" as PatientUploadedReport["category"],
+
     reportDate: "",
+
     note: "",
-  });
-  const [file, setFile] = useState<File | null>(null);
-  const [fileInputKey, setFileInputKey] = useState(0);
-  const [uploading, setUploading] = useState(false);
-  const [reindexingReportId, setReindexingReportId] = useState<string | null>(null);
-  const [error, setError] = useState("");
-  const [successMessage, setSuccessMessage] = useState("");
-  const [loadingReports, setLoadingReports] = useState(isBackendConfigured());
+  })
+
+  const [file, setFile] = useState<File | null>(null)
+
+  const [fileInputKey, setFileInputKey] = useState(0)
+
+  const [uploading, setUploading] = useState(false)
+
+  const [reindexingReportId, setReindexingReportId] = useState<string | null>(
+    null,
+  )
+
+  const [error, setError] = useState("")
+
+  const [successMessage, setSuccessMessage] = useState("")
+
+  const [loadingReports, setLoadingReports] = useState(true)
 
   useEffect(() => {
-    if (!isBackendConfigured()) return;
-    setLoadingReports(true);
-    api.reports.list(patientId)
-      .then(({ reports }) => setUploadedReports(reports as PatientUploadedReport[]))
+    if (!patientId) {
+      setLoadingReports(false)
+
+      return
+    }
+
+    setLoadingReports(true)
+
+    Promise.all([
+      api.reports.list(patientId).catch(() => ({ reports: [] })),
+
+      api.patients.getAdherence(patientId).catch(() => null),
+    ])
+
+      .then(([{ reports }, adherence]) => {
+        setUploadedReports((reports || []) as PatientUploadedReport[])
+
+        if (adherence) setLiveAdherence(adherence)
+      })
+
       .catch(() => setError("Reports could not be loaded. Retry to refresh."))
-      .finally(() => setLoadingReports(false));
-  }, [patientId]);
+
+      .finally(() => setLoadingReports(false))
+  }, [patientId])
 
   const handleUpload = async (event: React.FormEvent) => {
-    event.preventDefault();
-    setError("");
-    setSuccessMessage("");
+    event.preventDefault()
+
+    setError("")
+
+    setSuccessMessage("")
 
     if (!form.title.trim() || !form.reportDate || !file) {
-      setError("Add a report title, report date, and file before uploading.");
-      return;
-    }
-    if (!ACCEPTED_FILE_TYPES.includes(file.type)) {
-      setError("Upload a PDF, JPG, or PNG file.");
-      return;
-    }
-    if (file.size > MAX_FILE_SIZE) {
-      setError("The report must be 2 MB or smaller for this demo.");
-      return;
+      setError("Add a report title, report date, and file before uploading.")
+
+      return
     }
 
-    setUploading(true);
+    if (!ACCEPTED_FILE_TYPES.includes(file.type)) {
+      setError("Upload a PDF, JPG, or PNG file.")
+
+      return
+    }
+
+    if (file.size > MAX_FILE_SIZE) {
+      setError("The report must be 2 MB or smaller for this demo.")
+
+      return
+    }
+
+    setUploading(true)
+
     try {
       if (isBackendConfigured()) {
-        const mimeType = file.type || (file.name.toLowerCase().endsWith(".pdf") ? "application/pdf" : "image/jpeg");
+        const mimeType =
+          file.type ||
+          (file.name.toLowerCase().endsWith(".pdf")
+            ? "application/pdf"
+            : "image/jpeg")
+
         const upload = await api.reports.getUploadUrl({
           patientId,
+
           fileName: file.name,
+
           mimeType,
+
           fileType: mimeType,
+
           sizeBytes: file.size,
+
           fileSize: file.size,
-        });
+        })
+
         const uploadResponse = await fetch(upload.uploadUrl, {
           method: "PUT",
+
           headers: { "Content-Type": mimeType },
+
           body: file,
-        });
-        if (!uploadResponse.ok) throw new Error("Upload failed");
+        })
+
+        if (!uploadResponse.ok) throw new Error("Upload failed")
+
         const { report } = await api.reports.create({
           patientId,
+
           title: form.title.trim(),
+
           label: form.title.trim() || file.name,
+
           category: form.category,
+
           reportDate: form.reportDate,
+
           note: form.note.trim() || undefined,
+
           fileName: file.name,
+
           mimeType,
+
           fileType: mimeType,
+
           sizeBytes: file.size,
+
           fileSize: file.size,
+
           storagePath: upload.storagePath,
+
           sharedWithCareTeam: true,
-        });
-        setUploadedReports((current) => [report as PatientUploadedReport, ...current]);
+        })
+
+        setUploadedReports((current) => [
+          report as PatientUploadedReport,
+          ...current,
+        ])
       } else {
-      const fileDataUrl = await readFileAsDataUrl(file);
-      const report: PatientUploadedReport = {
-        id: `patient-report-${Date.now()}`,
-        patientId: PATIENT_ID,
-        patientName: PATIENT_NAME,
-        title: form.title.trim(),
-        category: form.category,
-        reportDate: form.reportDate,
-        note: form.note.trim() || undefined,
-        fileName: file.name,
-        fileType: file.type,
-        fileSize: file.size,
-        fileDataUrl,
-        uploadedAt: new Date().toISOString(),
-        status: "shared",
-        indexingStatus: "not_indexed",
-      };
-      const reports = addPatientUploadedReport(report);
-      setUploadedReports(reports.filter((item) => item.patientId === PATIENT_ID));
+        const fileDataUrl = await readFileAsDataUrl(file)
+
+        const report: PatientUploadedReport = {
+          id: `patient-report-${Date.now()}`,
+
+          patientId: patientId || "p-001",
+
+          patientName: user?.fullName || "Patient",
+
+          title: form.title.trim(),
+
+          category: form.category,
+
+          reportDate: form.reportDate,
+
+          note: form.note.trim() || undefined,
+
+          fileName: file.name,
+
+          fileType: file.type,
+
+          fileSize: file.size,
+
+          fileDataUrl,
+
+          uploadedAt: new Date().toISOString(),
+
+          status: "shared",
+
+          indexingStatus: "not_indexed",
+        }
+
+        const reports = addPatientUploadedReport(report)
+
+        setUploadedReports(
+          reports.filter((item) => item.patientId === (patientId || "p-001")),
+        )
       }
-      setForm({ title: "", category: "blood_test", reportDate: "", note: "" });
-      setFile(null);
-      setFileInputKey((key) => key + 1);
-      setSuccessMessage("Report uploaded and shared with Dr. Jeya Shankar M.");
+
+      setForm({ title: "", category: "blood_test", reportDate: "", note: "" })
+
+      setFile(null)
+
+      setFileInputKey((key) => key + 1)
+
+      setSuccessMessage("Report uploaded and shared with your care team.")
     } catch {
-      setError("The report could not be saved. Try a smaller file.");
+      setError("The report could not be saved. Try a smaller file.")
     } finally {
-      setUploading(false);
+      setUploading(false)
     }
-  };
+  }
 
   const handleRetryIndexing = async (reportId: string) => {
-    setReindexingReportId(reportId);
+    setReindexingReportId(reportId)
+
     try {
-      await getRagService().reindexReport(reportId);
+      await getRagService().reindexReport(reportId)
+
       if (isBackendConfigured()) {
-        setSuccessMessage("Report indexing has been queued.");
-        return;
+        setSuccessMessage("Report indexing has been queued.")
+
+        return
       }
-      const reports = setPatientReportIndexingStatus(reportId, "indexing");
-      setUploadedReports(reports.filter((item) => item.patientId === PATIENT_ID));
+
+      const reports = setPatientReportIndexingStatus(reportId, "indexing")
+
+      setUploadedReports(
+        reports.filter((item) => item.patientId === (patientId || "p-001")),
+      )
     } catch {
       const reports = setPatientReportIndexingStatus(
         reportId,
+
         "failed",
+
         "Indexing retry could not be started.",
-      );
-      setUploadedReports(reports.filter((item) => item.patientId === PATIENT_ID));
+      )
+
+      setUploadedReports(
+        reports.filter((item) => item.patientId === (patientId || "p-001")),
+      )
     } finally {
-      setReindexingReportId(null);
+      setReindexingReportId(null)
     }
-  };
+  }
 
   return (
     <div className="p-4 lg:p-6 space-y-6 animate-fade-in">
       <div>
         <h1 className="text-xl font-bold text-slate-900">Reports</h1>
-        <p className="text-slate-500 text-sm">Upload medical documents and review your adherence reports.</p>
+        <p className="text-slate-500 text-sm">
+          Upload medical documents and review your adherence reports.
+        </p>
       </div>
 
-      <Card padding="md" className="border-teal-200 bg-gradient-to-br from-white to-teal-50/50">
+      <Card
+        padding="md"
+        className="border-teal-200 bg-gradient-to-br from-white to-teal-50/50"
+      >
         <div className="flex items-start justify-between gap-4 mb-5 flex-wrap">
           <div>
             <div className="flex items-center gap-2 mb-1">
               <div className="w-9 h-9 rounded-lg bg-teal-100 text-teal-700 flex items-center justify-center">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width={18} height={18}>
-                  <path d="M12 16V4m0 0L7 9m5-5 5 5" strokeLinecap="round" strokeLinejoin="round" />
-                  <path d="M5 14v5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-5" strokeLinecap="round" />
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  width={18}
+                  height={18}
+                >
+                  <path
+                    d="M12 16V4m0 0L7 9m5-5 5 5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                  <path
+                    d="M5 14v5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-5"
+                    strokeLinecap="round"
+                  />
                 </svg>
               </div>
               <div>
-                <h2 className="text-base font-semibold text-slate-900">Upload a medical report</h2>
-                <p className="text-xs text-slate-500">The report will be shared with your assigned doctor.</p>
+                <h2 className="text-base font-semibold text-slate-900">
+                  Upload a medical report
+                </h2>
+                <p className="text-xs text-slate-500">
+                  The report will be shared with your assigned doctor.
+                </p>
               </div>
             </div>
           </div>
@@ -219,24 +379,34 @@ export default function Reports() {
               label="Report title"
               required
               value={form.title}
-              onChange={(event) => setForm({ ...form, title: event.target.value })}
+              onChange={(event) =>
+                setForm({ ...form, title: event.target.value })
+              }
               placeholder="e.g. HbA1c blood test"
             />
             <Select
               label="Report type"
               value={form.category}
-              onChange={(event) => setForm({
-                ...form,
-                category: event.target.value as PatientUploadedReport["category"],
-              })}
-              options={Object.entries(REPORT_CATEGORY_LABELS).map(([value, label]) => ({ value, label }))}
+              onChange={(event) =>
+                setForm({
+                  ...form,
+
+                  category: event.target
+                    .value as PatientUploadedReport["category"],
+                })
+              }
+              options={Object.entries(REPORT_CATEGORY_LABELS).map(
+                ([value, label]) => ({ value, label }),
+              )}
             />
             <Input
               label="Report date"
               type="date"
               required
               value={form.reportDate}
-              onChange={(event) => setForm({ ...form, reportDate: event.target.value })}
+              onChange={(event) =>
+                setForm({ ...form, reportDate: event.target.value })
+              }
             />
             <Input
               key={fileInputKey}
@@ -268,8 +438,13 @@ export default function Reports() {
           )}
 
           <div className="flex items-center justify-between gap-4 flex-wrap">
-            <p className="text-xs text-slate-500">This prototype stores the report in this browser for your linked doctor view.</p>
-            <Button type="submit" loading={uploading}>Upload &amp; Share with Doctor</Button>
+            <p className="text-xs text-slate-500">
+              This prototype stores the report in this browser for your linked
+              doctor view.
+            </p>
+            <Button type="submit" loading={uploading}>
+              Upload &amp; Share with Doctor
+            </Button>
           </div>
         </form>
       </Card>
@@ -277,18 +452,31 @@ export default function Reports() {
       <section className="space-y-3">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <h2 className="text-base font-semibold text-slate-900">My Medical Reports</h2>
-            <p className="text-xs text-slate-500">Documents you have shared with your care team.</p>
+            <h2 className="text-base font-semibold text-slate-900">
+              My Medical Reports
+            </h2>
+            <p className="text-xs text-slate-500">
+              Documents you have shared with your care team.
+            </p>
           </div>
           <Badge variant="default">{uploadedReports.length} uploaded</Badge>
         </div>
 
         {loadingReports ? (
-          <Card padding="md"><p className="text-sm text-slate-500">Loading reports…</p></Card>
+          <Card padding="md">
+            <p className="text-sm text-slate-500">Loading reports…</p>
+          </Card>
         ) : uploadedReports.length === 0 ? (
-          <Card padding="md" className="text-center border-dashed border-slate-200 bg-slate-50">
-            <p className="text-sm font-medium text-slate-700">No medical reports uploaded yet</p>
-            <p className="text-xs text-slate-500 mt-1">Your first uploaded report will appear here.</p>
+          <Card
+            padding="md"
+            className="text-center border-dashed border-slate-200 bg-slate-50"
+          >
+            <p className="text-sm font-medium text-slate-700">
+              No medical reports uploaded yet
+            </p>
+            <p className="text-xs text-slate-500 mt-1">
+              Your first uploaded report will appear here.
+            </p>
           </Card>
         ) : (
           uploadedReports.map((report) => (
@@ -296,41 +484,83 @@ export default function Reports() {
               <div className="flex items-start justify-between gap-4 flex-wrap">
                 <div className="flex items-start gap-3 min-w-0">
                   <div className="w-10 h-10 rounded-lg bg-cyan-50 text-cyan-700 flex items-center justify-center flex-shrink-0">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width={18} height={18}>
+                    <svg
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      width={18}
+                      height={18}
+                    >
                       <path d="M7 3h7l4 4v14H7z" strokeLinejoin="round" />
-                      <path d="M14 3v5h5M10 13h5M10 17h5" strokeLinecap="round" />
+                      <path
+                        d="M14 3v5h5M10 13h5M10 17h5"
+                        strokeLinecap="round"
+                      />
                     </svg>
                   </div>
                   <div className="min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <h3 className="text-sm font-semibold text-slate-900">{report.title}</h3>
-                      <Badge variant={report.status === "reviewed" ? "success" : "info"}>
-                        {report.status === "reviewed" ? "Reviewed by doctor" : "Shared with doctor"}
+                      <h3 className="text-sm font-semibold text-slate-900">
+                        {report.title}
+                      </h3>
+                      <Badge
+                        variant={
+                          report.status === "reviewed" ? "success" : "info"
+                        }
+                      >
+                        {report.status === "reviewed"
+                          ? "Reviewed by doctor"
+                          : "Shared with doctor"}
                       </Badge>
-                      <Badge variant={
-                        report.indexingStatus === "ready"
-                          ? "success"
-                          : report.indexingStatus === "failed"
-                            ? "error"
-                            : report.indexingStatus === "indexing"
-                              ? "warning"
-                              : "default"
-                      }>
-                        {REPORT_INDEXING_LABELS[report.indexingStatus ?? "not_indexed"]}
+                      <Badge
+                        variant={
+                          report.indexingStatus === "ready"
+                            ? "success"
+                            : report.indexingStatus === "failed"
+                              ? "error"
+                              : report.indexingStatus === "indexing"
+                                ? "warning"
+                                : "default"
+                        }
+                      >
+                        {
+                          REPORT_INDEXING_LABELS[
+                            report.indexingStatus ?? "not_indexed"
+                          ]
+                        }
                       </Badge>
                     </div>
                     <p className="text-xs text-slate-500 mt-1">
-                      {REPORT_CATEGORY_LABELS[report.category]} · Report date {new Date(`${report.reportDate}T00:00:00`).toLocaleDateString()}
+                      {REPORT_CATEGORY_LABELS[report.category]} · Report date{" "}
+                      {new Date(
+                        `${report.reportDate}T00:00:00`,
+                      ).toLocaleDateString()}
                     </p>
-                    <p className="text-xs text-slate-400 mt-1">{report.fileName} · {formatFileSize(report.fileSize)}</p>
-                    {report.indexingStatus === "failed" && report.indexingError && (
-                      <p className="text-xs text-rose-600 mt-1">{report.indexingError}</p>
+                    <p className="text-xs text-slate-400 mt-1">
+                      {report.fileName} · {formatFileSize(report.fileSize)}
+                    </p>
+                    {report.indexingStatus === "failed" &&
+                      report.indexingError && (
+                        <p className="text-xs text-rose-600 mt-1">
+                          {report.indexingError}
+                        </p>
+                      )}
+                    {report.note && (
+                      <p className="text-sm text-slate-600 mt-2">
+                        {report.note}
+                      </p>
                     )}
-                    {report.note && <p className="text-sm text-slate-600 mt-2">{report.note}</p>}
                   </div>
                 </div>
                 <div className="flex items-center gap-2 flex-wrap">
-                  <Button variant="outline" size="sm" onClick={() => openReport(report)}>View Report</Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => openReport(report)}
+                  >
+                    View Report
+                  </Button>
                   {report.indexingStatus === "failed" && (
                     <Button
                       size="sm"
@@ -349,65 +579,96 @@ export default function Reports() {
 
       <section className="space-y-3">
         <div>
-          <h2 className="text-base font-semibold text-slate-900">Adherence Reports</h2>
-          <p className="text-xs text-slate-500">Your automatically generated weekly and monthly summaries.</p>
+          <h2 className="text-base font-semibold text-slate-900">
+            Adherence Reports
+          </h2>
+          <p className="text-xs text-slate-500">
+            Your automatically generated weekly and monthly summaries.
+          </p>
         </div>
 
-        {DEMO_REPORTS.map((report, index) => (
-          <Card key={report.id} padding="md" className="animate-slide-in-up" style={{ animationDelay: `${index * 80}ms` } as React.CSSProperties}>
+        {liveAdherence ? (
+          <Card padding="md" className="animate-slide-in-up">
             <div className="flex items-start justify-between gap-4 mb-4">
               <div>
                 <div className="flex items-center gap-2 mb-1">
-                  <Badge variant={report.period === "monthly" ? "info" : "default"} size="sm">
-                    {report.period === "weekly" ? "Weekly Report" : "Monthly Report"}
+                  <Badge variant="info" size="sm">
+                    Current Period Adherence
                   </Badge>
-                  <StatusPill status={report.trend} />
+                  <StatusPill
+                    status={
+                      liveAdherence.trend === "up"
+                        ? "improving"
+                        : liveAdherence.trend === "down"
+                          ? "declining"
+                          : "stable"
+                    }
+                  />
                 </div>
                 <p className="text-xs text-slate-500 font-mono">
-                  {report.startDate} → {report.endDate}
+                  Continuous Server-Calculated Tracking
                 </p>
               </div>
-              <AdherenceRing score={report.adherencePercent} size={70} strokeWidth={8} animate={index === 0} />
+              <AdherenceRing
+                score={liveAdherence.score}
+                size={70}
+                strokeWidth={8}
+                animate
+              />
             </div>
 
             <div className="bg-gradient-to-r from-teal-50 to-cyan-50 border border-teal-100 rounded-xl px-4 py-3 mb-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <span className="text-3xl font-bold text-teal-700">{report.adherencePercent}%</span>
-                  <span className="text-teal-500 ml-2 text-sm font-medium">{TREND_EMOJIS[report.trend]} {report.trend}</span>
+                  <span className="text-3xl font-bold text-teal-700">
+                    {liveAdherence.score}%
+                  </span>
+                  <span className="text-teal-500 ml-2 text-sm font-medium">
+                    {TREND_EMOJIS[liveAdherence.trend] || "→"}{" "}
+                    {liveAdherence.trend}
+                  </span>
                 </div>
                 <div className="text-right">
-                  <p className="text-sm font-medium text-slate-700">{report.missedDays} missed day{report.missedDays !== 1 ? "s" : ""}</p>
-                  <p className="text-xs text-slate-500">this period</p>
+                  <p className="text-sm font-medium text-slate-700">
+                    {liveAdherence.missedCount} missed dose
+                    {liveAdherence.missedCount !== 1 ? "s" : ""}
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    Streak: {liveAdherence.currentStreakDays} days
+                  </p>
                 </div>
               </div>
-              <p className="text-sm text-teal-700 mt-2 italic">{ENCOURAGEMENTS[report.trend]}</p>
+              <p className="text-sm text-teal-700 mt-2 italic">
+                {ENCOURAGEMENTS[liveAdherence.trend]}
+              </p>
             </div>
 
             <div className="space-y-2">
-              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Highlights</p>
-              {report.insights.map((insight, insightIndex) => (
-                <div key={insightIndex} className="flex items-start gap-2.5 text-sm text-slate-700">
-                  <span className="text-teal-500 mt-0.5 flex-shrink-0">·</span>
-                  {insight}
-                </div>
-              ))}
-            </div>
-
-            {report.deliveredAt && (
-              <p className="text-[10px] text-slate-400 mt-3 border-t border-slate-50 pt-3">
-                Delivered {new Date(report.deliveredAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })} via email
+              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                Summary Breakdown
               </p>
-            )}
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="p-2.5 bg-slate-50 rounded-lg">
+                  <span className="text-slate-500 block">Doses Taken</span>
+                  <span className="text-slate-800 font-bold text-sm">
+                    {liveAdherence.takenCount}
+                  </span>
+                </div>
+                <div className="p-2.5 bg-slate-50 rounded-lg">
+                  <span className="text-slate-500 block">Doses Missed</span>
+                  <span className="text-slate-800 font-bold text-sm">
+                    {liveAdherence.missedCount}
+                  </span>
+                </div>
+              </div>
+            </div>
           </Card>
-        ))}
-
-        <Card padding="md" className="text-center bg-slate-50 border-dashed border-slate-200">
-          <p className="text-sm text-slate-500 mb-1">Next weekly report</p>
-          <p className="text-sm font-medium text-slate-700">September 15 — September 21, 2026</p>
-          <p className="text-xs text-slate-400 mt-1">Will be delivered by email on Sep 22</p>
-        </Card>
+        ) : (
+          <p className="text-sm text-slate-500 py-3">
+            No adherence report records available yet.
+          </p>
+        )}
       </section>
     </div>
-  );
+  )
 }
