@@ -63,9 +63,9 @@ export default function DoseCenter() {
               : s.status) as "pending" | "taken" | "skipped",
           loggedAt: s.loggedAt
             ? new Date(s.loggedAt).toLocaleTimeString([], {
-                hour: "2-digit",
-                minute: "2-digit",
-              })
+              hour: "2-digit",
+              minute: "2-digit",
+            })
             : undefined,
           reason: s.reason || undefined,
         }))
@@ -180,20 +180,18 @@ export default function DoseCenter() {
               <div className="flex items-start justify-between gap-4">
                 <div className="flex items-start gap-3">
                   <div
-                    className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${
-                      dose.status === "taken"
+                    className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${dose.status === "taken"
                         ? "bg-emerald-100"
                         : dose.status === "skipped"
                           ? "bg-slate-100"
                           : "bg-teal-50 border border-teal-200"
-                    }`}
+                      }`}
                   >
                     {dose.status === "taken" ? (
                       <svg
                         viewBox="0 0 24 24"
-                        className={`fill-emerald-600 ${
-                          justTaken === dose.id ? "animate-heartbeat" : ""
-                        }`}
+                        className={`fill-emerald-600 ${justTaken === dose.id ? "animate-heartbeat" : ""
+                          }`}
                         width={18}
                         height={18}
                       >

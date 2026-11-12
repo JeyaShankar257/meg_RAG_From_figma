@@ -31,6 +31,7 @@ import { correctionsRouter } from "./routes/corrections/index.js";
 import { auditRouter } from "./routes/audit/index.js";
 import { doctorRouter } from "./routes/doctor/index.js";
 import { escalationsRouter } from "./routes/escalations/index.js";
+import { adminRouter } from "./routes/admin/index.js";
 
 // ─── 3. Routes ────────────────────────────────────────────────────────────────
 app.route("/health", healthRouter);
@@ -44,6 +45,7 @@ app.route("/corrections", correctionsRouter);
 app.route("/audit", auditRouter);
 app.route("/doctor", doctorRouter);
 app.route("/escalations", escalationsRouter);
+app.route("/admin", adminRouter);
 app.route("/webhooks", webhooksRouter);
 
 // 404 fallback
