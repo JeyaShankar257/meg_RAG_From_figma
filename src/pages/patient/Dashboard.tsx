@@ -74,6 +74,14 @@ export default function PatientDashboard() {
 
   const [error, setError] = useState("")
 
+  const [latestDoctorNote, setLatestDoctorNote] = useState<{
+    doctorName: string
+    initials: string
+    message: string
+  } | null>(null)
+
+  const [sparklinePoints, setSparklinePoints] = useState<number[]>([])
+
   useEffect(() => {
     if (!user) return
 
@@ -95,9 +103,11 @@ export default function PatientDashboard() {
       api.patients.getAdherence(patientId),
 
       api.patients.getDoseSchedules(patientId),
+
+      api.patients.getVisits(patientId).catch(() => ({ visits: [] })),
     ])
 
-      .then(([medicationResult, adherenceResult, scheduleResult]) => {
+      .then(([medicationResult, adherenceResult, scheduleResult, visitsResult]) => {
         setActiveMeds(
           medicationResult.medications.map((medication: any) => ({
             id: String(medication.id),
@@ -139,6 +149,30 @@ export default function PatientDashboard() {
 
           currentStreakDays: adherenceResult.currentStreakDays,
         })
+
+        if (Array.isArray(adherenceResult.sparklineData) && adherenceResult.sparklineData.length > 0) {
+          setSparklinePoints(adherenceResult.sparklineData.map((pt: any) => pt.value))
+        }
+
+        const visits = visitsResult.visits || []
+        if (visits.length > 0) {
+          const v = visits[0]
+          const docName = v.doctorName || v.profiles?.full_name || "Care Team Doctor"
+          const initials = docName
+            .split(" ")
+            .filter(Boolean)
+            .map((p: string) => p[0].toUpperCase())
+            .slice(0, 2)
+            .join("") || "DR"
+
+          setLatestDoctorNote({
+            doctorName: docName,
+            initials,
+            message: v.notes || v.proposedSolution || "Continue taking your prescribed medications on schedule.",
+          })
+        } else {
+          setLatestDoctorNote(null)
+        }
       })
 
       .catch(() => setError("Dashboard data could not be loaded."))
@@ -240,12 +274,26 @@ export default function PatientDashboard() {
               </Badge>
             </div>
             <p className="text-xs text-slate-500 mb-3">
-              Your score has improved over the last 3 months. Keep it up!
+              {adherence.score === 0
+                ? "Your score will calculate as doses are taken."
+                : adherence.trend === "up"
+                  ? "Your adherence is trending up. Keep it up!"
+                  : adherence.trend === "down"
+                    ? "Your adherence needs attention. Try not to skip scheduled doses."
+                    : "Your adherence is steady and consistent."}
             </p>
             <div className="h-10">
-              <p className="text-xs text-slate-400">
-                Trend data will appear as adherence is recorded.
-              </p>
+              {sparklinePoints.length > 0 ? (
+                <TrendSparkline
+                  data={sparklinePoints.map((val, idx) => ({ date: `W${idx + 1}`, value: val }))}
+                  color={adherence.trend === "up" ? "#10b981" : adherence.trend === "down" ? "#f59e0b" : "#0d9488"}
+                  height={40}
+                />
+              ) : (
+                <p className="text-xs text-slate-400">
+                  Trend data will appear as adherence is recorded.
+                </p>
+              )}
             </div>
           </div>
         </div>
@@ -299,22 +347,23 @@ export default function PatientDashboard() {
       </div>
 
       {/* Care team message */}
-      <Card padding="md" className="bg-cyan-50 border-cyan-100">
-        <div className="flex items-start gap-3">
-          <div className="w-8 h-8 rounded-full bg-cyan-200 flex items-center justify-center text-cyan-700 font-bold text-xs flex-shrink-0">
-            SC
+      {latestDoctorNote && (
+        <Card padding="md" className="bg-cyan-50 border-cyan-100">
+          <div className="flex items-start gap-3">
+            <div className="w-8 h-8 rounded-full bg-cyan-200 flex items-center justify-center text-cyan-700 font-bold text-xs flex-shrink-0">
+              {latestDoctorNote.initials}
+            </div>
+            <div>
+              <p className="text-xs text-cyan-600 font-medium mb-1">
+                {latestDoctorNote.doctorName} · Care Team Consultation
+              </p>
+              <p className="text-sm text-cyan-900">
+                {latestDoctorNote.message}
+              </p>
+            </div>
           </div>
-          <div>
-            <p className="text-xs text-cyan-600 font-medium mb-1">
-              Dr. Jeya Shankar M · Care Team Message
-            </p>
-            <p className="text-sm text-cyan-900">
-              Your HbA1c is trending down — great progress with your medication
-              routine. Keep logging your afternoon dose on time!
-            </p>
-          </div>
-        </div>
-      </Card>
+        </Card>
+      )}
     </div>
   )
 }

@@ -384,7 +384,40 @@ prescriptionsRouter.post("/:id/approve", requireRole("doctor"), async (c) => {
         }
 
         if (scheduleRows.length > 0) {
-            await admin.from("dose_schedules").insert(scheduleRows);
+            const { data: insertedSchedules } = await admin
+                .from("dose_schedules")
+                .insert(scheduleRows)
+                .select("id, scheduled_at, patient_id");
+
+            // Enqueue corresponding send_reminder jobs for the worker to process at scheduled times
+            const { data: patientRecord } = await admin
+                .from("patients")
+                .select("contact_email")
+                .eq("id", prescription.patient_id)
+                .maybeSingle();
+
+            const patientEmail = patientRecord?.contact_email;
+            if (insertedSchedules && insertedSchedules.length > 0) {
+                const reminderJobs = insertedSchedules.map((sched: any) => ({
+                    type: "send_reminder",
+                    status: "pending",
+                    idempotency_key: `rem-${sched.id}`,
+                    correlation_id: correlationId,
+                    next_run_at: sched.scheduled_at,
+                    payload: {
+                        patientId: sched.patient_id,
+                        scheduleId: sched.id,
+                        prescriptionId: actualPrescriptionId,
+                        email: patientEmail,
+                        medicationName: (prescription.medications as any)?.name || "Prescribed Medication",
+                    },
+                }));
+
+                const { error: remJobErr } = await admin.from("jobs").insert(reminderJobs);
+                if (remJobErr) {
+                    console.warn("[prescriptionApproval] Reminder jobs insertion notice:", remJobErr.message);
+                }
+            }
         }
     } catch (schedGenErr) {
         console.warn("Direct dose schedule generation encountered error:", schedGenErr);

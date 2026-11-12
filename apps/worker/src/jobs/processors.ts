@@ -60,9 +60,38 @@ export async function processGenerateDoseSchedule(
         });
     }
 
-    const { error: insErr } = await supabase.from("dose_schedules").insert(scheduleRows);
+    const { data: insertedSchedules, error: insErr } = await supabase
+        .from("dose_schedules")
+        .insert(scheduleRows)
+        .select("id, scheduled_at, patient_id");
+
     if (insErr) {
         return { success: false, retryable: true, error: insErr.message };
+    }
+
+    // Enqueue corresponding send_reminder jobs for each schedule entry
+    const { data: patientRecord } = await supabase
+        .from("patients")
+        .select("contact_email")
+        .eq("id", patientId)
+        .maybeSingle();
+
+    if (insertedSchedules && insertedSchedules.length > 0) {
+        const reminderJobs = insertedSchedules.map((sched: any) => ({
+            type: "send_reminder",
+            status: "pending",
+            idempotency_key: `rem-${sched.id}`,
+            correlation_id: job.correlation_id,
+            next_run_at: sched.scheduled_at,
+            payload: {
+                patientId: sched.patient_id,
+                scheduleId: sched.id,
+                prescriptionId,
+                email: patientRecord?.contact_email,
+            },
+        }));
+
+        await supabase.from("jobs").insert(reminderJobs);
     }
 
     return { success: true };

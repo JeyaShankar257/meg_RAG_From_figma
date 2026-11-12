@@ -121,7 +121,16 @@ describe("Worker & Durable Queue Integration Tests (Task 4.3 - 4.6)", () => {
     // ─── 2. Prescription-to-Schedule Flow & Idempotency (Task 4.1 & 4.6) ──────
     describe("Prescription-to-Schedule Processor", () => {
         it("generates 30 daily dose schedules and prevents duplicate creation", async () => {
-            const insertSpy = vi.fn().mockResolvedValue({ error: null });
+            const insertSpy = vi.fn().mockReturnValue({
+                select: vi.fn().mockResolvedValue({
+                    data: Array.from({ length: 30 }, (_, i) => ({
+                        id: `ds-${i}`,
+                        scheduled_at: new Date().toISOString(),
+                        patient_id: "p-001",
+                    })),
+                    error: null,
+                }),
+            });
 
             let existingCount = 0;
             const mockSupabase: any = {
@@ -141,6 +150,20 @@ describe("Worker & Durable Queue Integration Tests (Task 4.3 - 4.6)", () => {
                                     single: () => Promise.resolve({ data: { id: "rx-1", status: "approved" }, error: null }),
                                 }),
                             }),
+                        };
+                    }
+                    if (table === "patients") {
+                        return {
+                            select: () => ({
+                                eq: () => ({
+                                    maybeSingle: () => Promise.resolve({ data: { contact_email: "patient@mednova.demo" } }),
+                                }),
+                            }),
+                        };
+                    }
+                    if (table === "jobs") {
+                        return {
+                            insert: vi.fn().mockResolvedValue({ error: null }),
                         };
                     }
                     return {};
@@ -223,7 +246,16 @@ describe("Worker & Durable Queue Integration Tests (Task 4.3 - 4.6)", () => {
         });
 
         it("dispatches reminder and records sent status with provider message ID", async () => {
-            const insertSpy = vi.fn().mockResolvedValue({ error: null });
+            const insertSpy = vi.fn().mockReturnValue({
+                select: vi.fn().mockResolvedValue({
+                    data: Array.from({ length: 30 }, (_, i) => ({
+                        id: `ds-${i}`,
+                        scheduled_at: new Date().toISOString(),
+                        patient_id: "p-001",
+                    })),
+                    error: null,
+                }),
+            });
             const mockSupabase: any = {
                 from: (table: string) => {
                     if (table === "notification_preferences") {

@@ -57,7 +57,7 @@ describe("Admin Batch Adherence Evaluation API (Task 1.1 - 1.3, 4.1)", () => {
         });
 
         expect(res.status).toBe(401);
-        const body = await res.json();
+        const body = (await res.json()) as any;
         expect(body.error).toContain("Unauthorized");
     });
 
@@ -81,12 +81,26 @@ describe("Admin Batch Adherence Evaluation API (Task 1.1 - 1.3, 4.1)", () => {
         });
 
         expect(res.status).toBe(200);
-        const body = await res.json();
+        const body = (await res.json()) as any;
         expect(body.success).toBe(true);
         expect(body.evaluated).toBe(2);
         expect(body.succeeded).toBe(2);
         expect(body.failed).toBe(0);
         expect(body.errors).toHaveLength(0);
+    });
+
+    it("dispatches due dose reminders with correct admin secret", async () => {
+        const res = await app.request("/admin/reminders/dispatch-due", {
+            method: "POST",
+            headers: {
+                "x-admin-secret": "test-secret-12345",
+            },
+        });
+
+        expect(res.status).toBe(200);
+        const body = (await res.json()) as any;
+        expect(body.success).toBe(true);
+        expect(body.dispatchedCount).toBeDefined();
     });
 });
 

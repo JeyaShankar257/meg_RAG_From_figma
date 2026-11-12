@@ -80,14 +80,14 @@ export default function Transparency() {
           setConsentMap({
             care_team: consent.share_with_care_team ?? true,
             escalations: consent.share_with_care_team ?? true,
-            reports: consent.allow_reminders ?? true,
+            reports: consent.share_with_care_team ?? true,
             ai_analysis: consent.allow_ai_analysis ?? false,
           })
         }
 
         if (transparency) {
           setTrustData({
-            assuranceScore: transparency.assuranceScore ?? 98,
+            assuranceScore: transparency.assuranceScore ?? 100,
             trustSignals: transparency.trustSignals || [],
             recentAudits: transparency.recentAudits || [],
           })

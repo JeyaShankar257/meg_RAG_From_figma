@@ -283,6 +283,18 @@ describe("Patient Portal Workflows (Task 2.1 - 2.6)", () => {
             expect(body.sparklineData).toBeInstanceOf(Array);
             expect(body.sparklineData.length).toBe(12);
         });
+
+        it("calculates 0% adherence score for a patient with no logged/scheduled doses", async () => {
+            mockStore.dose_logs = [];
+            mockStore.dose_schedules = [];
+            const res = await app.request("/patients/p-001/adherence", {
+                headers: { Authorization: "Bearer demo-token-patient" },
+            });
+            expect(res.status).toBe(200);
+            const body = (await res.json()) as any;
+            expect(body.score).toBe(0);
+            expect(body.takenCount).toBe(0);
+        });
     });
 
     describe("Trust & Transparency Endpoint (Task 2.4)", () => {

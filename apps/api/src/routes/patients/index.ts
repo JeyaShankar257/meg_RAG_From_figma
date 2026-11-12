@@ -690,15 +690,26 @@ patientsRouter.get("/:id/adherence", async (c) => {
         loggedAt: l.logged_at || new Date().toISOString(),
     }));
 
+    // 1. Fetch total assigned/scheduled doses due so far (scheduled_at <= now)
+    const nowIso = new Date().toISOString();
+    const { count: assignedCount } = await admin
+        .from("dose_schedules")
+        .select("id", { count: "exact", head: true })
+        .eq("patient_id", patientId)
+        .lte("scheduled_at", nowIso);
+
     const takenCount = logs.filter((l: any) => l.status === "taken").length;
     const missedCount = logs.filter((l: any) => l.status === "missed").length;
-    const totalCount = takenCount + missedCount;
+    const skippedCount = logs.filter((l: any) => l.status === "skipped").length;
+    const totalAssignedSoFar = assignedCount || (takenCount + missedCount + skippedCount);
 
-    const takenPercentage = totalCount ? Math.round((takenCount / totalCount) * 100) : 0;
+    const takenPercentage = totalAssignedSoFar > 0 ? Math.round((takenCount / totalAssignedSoFar) * 100) : 0;
     const latePercentage = 0;
-    const missedPercentage = totalCount ? Math.round((missedCount / totalCount) * 100) : 0;
-    const skippedPercentage = 0;
-    const score = totalCount ? Math.round((takenCount / totalCount) * 100) : 100;
+    const missedPercentage = totalAssignedSoFar > 0 ? Math.round((missedCount / totalAssignedSoFar) * 100) : 0;
+    const skippedPercentage = totalAssignedSoFar > 0 ? Math.round((skippedCount / totalAssignedSoFar) * 100) : 0;
+    
+    // Adherence starts at 0% for new patients with no scheduled/logged doses; scales as taken / assignedSoFar
+    const score = totalAssignedSoFar > 0 ? Math.min(100, Math.round((takenCount / totalAssignedSoFar) * 100)) : 0;
 
     // Calculate current adherence streak days (consecutive days with only taken doses)
     let currentStreakDays = 0;

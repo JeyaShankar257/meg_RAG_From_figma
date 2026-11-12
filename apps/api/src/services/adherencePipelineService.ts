@@ -238,8 +238,16 @@ export async function evaluateDailyPatternForPatient(
         }
     }
 
+    // Query dose schedules due so far for patient
+    const { count: assignedCount } = await admin
+        .from("dose_schedules")
+        .select("id", { count: "exact", head: true })
+        .eq("patient_id", patientId)
+        .lte("scheduled_at", evaluatedAt);
+
     const totalLogged = takenCount + skippedCount + missedCount;
-    let adherenceScore = totalLogged > 0 ? (takenCount / totalLogged) * 100 : 92;
+    const effectiveTotal = assignedCount || totalLogged;
+    let adherenceScore = effectiveTotal > 0 ? (takenCount / effectiveTotal) * 100 : 0;
     if (options.mockAdherenceRate !== undefined) {
         adherenceScore = options.mockAdherenceRate;
     }
