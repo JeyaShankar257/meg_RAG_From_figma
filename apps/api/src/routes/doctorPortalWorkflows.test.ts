@@ -184,6 +184,10 @@ vi.mock("../lib/supabase.js", () => {
                 currentFilter = currentFilter.filter((r) => r[field] >= val);
                 return query;
             }),
+            lte: vi.fn().mockImplementation((field: string, val: any) => {
+                currentFilter = currentFilter.filter((r) => r[field] <= val);
+                return query;
+            }),
             is: vi.fn().mockImplementation((field: string, val: any) => {
                 currentFilter = currentFilter.filter((r) => r[field] === val);
                 return query;
@@ -204,7 +208,7 @@ vi.mock("../lib/supabase.js", () => {
                 const item = currentFilter[0];
                 return { data: item || null, error: null };
             }),
-            then: (resolve: any) => resolve({ data: currentFilter, error: null }),
+            then: (resolve: any) => resolve({ data: currentFilter, count: currentFilter.length, error: null }),
         };
 
         return query;

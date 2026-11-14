@@ -6,17 +6,14 @@ import type {
 } from "../../lib/types"
 
 import {
-  addPatientUploadedReport,
   formatFileSize,
-  getPatientUploadedReports,
   REPORT_CATEGORY_LABELS,
   REPORT_INDEXING_LABELS,
-  setPatientReportIndexingStatus,
 } from "../../lib/patientReports"
 
 import { getRagService } from "../../lib/rag"
 
-import { api, getPatientId, isBackendConfigured } from "../../lib/api/apiClient"
+import { api, getPatientId } from "../../lib/api/apiClient"
 
 import { useSession } from "../../lib/auth/SessionProvider"
 
@@ -60,26 +57,16 @@ const ENCOURAGEMENTS: Record<string, string> = {
   down: "This week was tougher, but tomorrow is a new start.",
 }
 
-function readFileAsDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-
-    reader.onload = () => resolve(String(reader.result))
-
-    reader.onerror = () =>
-      reject(new Error("The selected file could not be read."))
-
-    reader.readAsDataURL(file)
-  })
-}
-
 async function openReport(report: PatientUploadedReport) {
-  const url =
-    isBackendConfigured() && report.id
-      ? (await api.reports.getViewUrl(report.id)).signedUrl
-      : report.fileDataUrl
-
-  if (url) window.open(url, "_blank", "noopener,noreferrer")
+  if (!report.id) return
+  try {
+    const { signedUrl } = await api.reports.getViewUrl(report.id)
+    if (signedUrl) window.open(signedUrl, "_blank", "noopener,noreferrer")
+  } catch {
+    if (report.fileDataUrl) {
+      window.open(report.fileDataUrl, "_blank", "noopener,noreferrer")
+    }
+  }
 }
 
 export default function Reports() {
@@ -173,115 +160,53 @@ export default function Reports() {
     setUploading(true)
 
     try {
-      if (isBackendConfigured()) {
-        const mimeType =
-          file.type ||
-          (file.name.toLowerCase().endsWith(".pdf")
-            ? "application/pdf"
-            : "image/jpeg")
+      const mimeType =
+        file.type ||
+        (file.name.toLowerCase().endsWith(".pdf")
+          ? "application/pdf"
+          : "image/jpeg")
 
-        const upload = await api.reports.getUploadUrl({
-          patientId,
+      const upload = await api.reports.getUploadUrl({
+        patientId,
+        fileName: file.name,
+        mimeType,
+        fileType: mimeType,
+        sizeBytes: file.size,
+        fileSize: file.size,
+      })
 
-          fileName: file.name,
+      const uploadResponse = await fetch(upload.uploadUrl, {
+        method: "PUT",
+        headers: { "Content-Type": mimeType },
+        body: file,
+      })
 
-          mimeType,
+      if (!uploadResponse.ok) throw new Error("Upload failed")
 
-          fileType: mimeType,
+      const { report } = await api.reports.create({
+        patientId,
+        title: form.title.trim(),
+        label: form.title.trim() || file.name,
+        category: form.category,
+        reportDate: form.reportDate,
+        note: form.note.trim() || undefined,
+        fileName: file.name,
+        mimeType,
+        fileType: mimeType,
+        sizeBytes: file.size,
+        fileSize: file.size,
+        storagePath: upload.storagePath,
+        sharedWithCareTeam: true,
+      })
 
-          sizeBytes: file.size,
-
-          fileSize: file.size,
-        })
-
-        const uploadResponse = await fetch(upload.uploadUrl, {
-          method: "PUT",
-
-          headers: { "Content-Type": mimeType },
-
-          body: file,
-        })
-
-        if (!uploadResponse.ok) throw new Error("Upload failed")
-
-        const { report } = await api.reports.create({
-          patientId,
-
-          title: form.title.trim(),
-
-          label: form.title.trim() || file.name,
-
-          category: form.category,
-
-          reportDate: form.reportDate,
-
-          note: form.note.trim() || undefined,
-
-          fileName: file.name,
-
-          mimeType,
-
-          fileType: mimeType,
-
-          sizeBytes: file.size,
-
-          fileSize: file.size,
-
-          storagePath: upload.storagePath,
-
-          sharedWithCareTeam: true,
-        })
-
-        setUploadedReports((current) => [
-          report as PatientUploadedReport,
-          ...current,
-        ])
-      } else {
-        const fileDataUrl = await readFileAsDataUrl(file)
-
-        const report: PatientUploadedReport = {
-          id: `patient-report-${Date.now()}`,
-
-          patientId: patientId || "p-001",
-
-          patientName: user?.fullName || "Patient",
-
-          title: form.title.trim(),
-
-          category: form.category,
-
-          reportDate: form.reportDate,
-
-          note: form.note.trim() || undefined,
-
-          fileName: file.name,
-
-          fileType: file.type,
-
-          fileSize: file.size,
-
-          fileDataUrl,
-
-          uploadedAt: new Date().toISOString(),
-
-          status: "shared",
-
-          indexingStatus: "not_indexed",
-        }
-
-        const reports = addPatientUploadedReport(report)
-
-        setUploadedReports(
-          reports.filter((item) => item.patientId === (patientId || "p-001")),
-        )
-      }
+      setUploadedReports((current) => [
+        report as PatientUploadedReport,
+        ...current,
+      ])
 
       setForm({ title: "", category: "blood_test", reportDate: "", note: "" })
-
       setFile(null)
-
       setFileInputKey((key) => key + 1)
-
       setSuccessMessage("Report uploaded and shared with your care team.")
     } catch {
       setError("The report could not be saved. Try a smaller file.")
@@ -292,33 +217,11 @@ export default function Reports() {
 
   const handleRetryIndexing = async (reportId: string) => {
     setReindexingReportId(reportId)
-
     try {
       await getRagService().reindexReport(reportId)
-
-      if (isBackendConfigured()) {
-        setSuccessMessage("Report indexing has been queued.")
-
-        return
-      }
-
-      const reports = setPatientReportIndexingStatus(reportId, "indexing")
-
-      setUploadedReports(
-        reports.filter((item) => item.patientId === (patientId || "p-001")),
-      )
+      setSuccessMessage("Report indexing has been queued.")
     } catch {
-      const reports = setPatientReportIndexingStatus(
-        reportId,
-
-        "failed",
-
-        "Indexing retry could not be started.",
-      )
-
-      setUploadedReports(
-        reports.filter((item) => item.patientId === (patientId || "p-001")),
-      )
+      setError("Indexing retry could not be started.")
     } finally {
       setReindexingReportId(null)
     }
@@ -370,7 +273,7 @@ export default function Reports() {
               </div>
             </div>
           </div>
-          <Badge variant="info">Demo upload</Badge>
+          <Badge variant="info">Secure Upload</Badge>
         </div>
 
         <form onSubmit={handleUpload} className="space-y-4">
@@ -439,8 +342,7 @@ export default function Reports() {
 
           <div className="flex items-center justify-between gap-4 flex-wrap">
             <p className="text-xs text-slate-500">
-              This prototype stores the report in this browser for your linked
-              doctor view.
+              Uploaded reports are encrypted in cloud storage and shared with your care team.
             </p>
             <Button type="submit" loading={uploading}>
               Upload &amp; Share with Doctor

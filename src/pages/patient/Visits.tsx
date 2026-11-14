@@ -2,7 +2,7 @@ import { useEffect, useState } from "react"
 
 import type { Visit } from "../../lib/types"
 
-import { api, getPatientId, isBackendConfigured } from "../../lib/api/apiClient"
+import { api, getPatientId } from "../../lib/api/apiClient"
 
 import { useSession } from "../../lib/auth/SessionProvider"
 

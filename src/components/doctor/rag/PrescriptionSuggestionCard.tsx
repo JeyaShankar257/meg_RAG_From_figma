@@ -105,20 +105,77 @@ export default function PrescriptionSuggestionCard({
                 { label: "Unit", field: "unit" as const, type: "text" },
                 { label: "Frequency", field: "frequency" as const, type: "text" },
                 { label: "Quantity (tablets)", field: "quantity" as const, type: "number" },
-                { label: "Days", field: "days" as const, type: "number" },
+                { label: "Duration (Days)", field: "days" as const, type: "number" },
               ].map(({ label, field, type }) => (
                 <Input
                   key={field}
                   label={label}
                   type={type}
                   value={medication[field] as string | number}
-                  onChange={(event) => onFieldChange(
-                    index,
-                    field,
-                    type === "number" ? Number(event.target.value) : event.target.value,
-                  )}
+                  onChange={(event) => {
+                    const val =
+                      type === "number" ? Number(event.target.value) : event.target.value
+                    onFieldChange(index, field, val)
+                    if (field === "days") {
+                      const start =
+                        medication.startDate || new Date().toISOString().slice(0, 10)
+                      const computedEnd = new Date(
+                        new Date(start).getTime() + Number(val) * 86400000,
+                      )
+                        .toISOString()
+                        .slice(0, 10)
+                      onFieldChange(index, "endDate", computedEnd)
+                    }
+                  }}
                 />
               ))}
+              <Input
+                label="Start Date"
+                type="date"
+                value={
+                  medication.startDate || new Date().toISOString().slice(0, 10)
+                }
+                onChange={(event) => {
+                  const newStart = event.target.value
+                  onFieldChange(index, "startDate", newStart)
+                  const days = Number(medication.days || 30)
+                  const computedEnd = new Date(
+                    new Date(newStart).getTime() + days * 86400000,
+                  )
+                    .toISOString()
+                    .slice(0, 10)
+                  onFieldChange(index, "endDate", computedEnd)
+                }}
+              />
+              <Input
+                label="End Date"
+                type="date"
+                value={
+                  medication.endDate ||
+                  new Date(
+                    new Date(
+                      medication.startDate || new Date().toISOString().slice(0, 10),
+                    ).getTime() +
+                      Number(medication.days || 30) * 86400000,
+                  )
+                    .toISOString()
+                    .slice(0, 10)
+                }
+                onChange={(event) => {
+                  const newEnd = event.target.value
+                  onFieldChange(index, "endDate", newEnd)
+                  const start =
+                    medication.startDate || new Date().toISOString().slice(0, 10)
+                  const diffDays = Math.max(
+                    1,
+                    Math.round(
+                      (new Date(newEnd).getTime() - new Date(start).getTime()) /
+                        86400000,
+                    ),
+                  )
+                  onFieldChange(index, "days", diffDays)
+                }}
+              />
             </div>
 
             <div className="mb-3">

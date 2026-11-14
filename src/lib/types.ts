@@ -137,6 +137,8 @@ export interface AIPrescriptionSuggestion {
   frequency: string;
   quantity: number;
   days: number;
+  startDate?: string;
+  endDate?: string;
   instructions: string;
   reasoning: string;
   citations: Citation[];
@@ -527,6 +529,8 @@ export interface PatientAdherenceSummary {
     reason?: string;
     idempotencyKey?: string;
     loggedAt?: string;
+    medicationName?: string;
+    dosage?: string;
   }>;
   heatmapData?: HeatmapCell[];
   sparklineData?: SparklinePoint[];

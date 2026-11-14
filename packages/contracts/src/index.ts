@@ -185,6 +185,8 @@ export const doseLogSchema = z.object({
     reason: z.string().optional(),
     idempotencyKey: z.string(),
     loggedAt: z.string(),
+    medicationName: z.string().optional(),
+    dosage: z.string().optional(),
 });
 
 export const patientAdherenceSummarySchema = z.object({

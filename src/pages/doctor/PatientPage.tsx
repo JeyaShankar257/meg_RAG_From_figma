@@ -317,6 +317,18 @@ export default function PatientPage() {
 
                 days: medication.days,
 
+                startDate:
+                  medication.startDate || approvedAt.toISOString().slice(0, 10),
+
+                endDate:
+                  medication.endDate ||
+                  new Date(
+                    new Date(medication.startDate || approvedAt).getTime() +
+                      Number(medication.days || 30) * 86400000,
+                  )
+                    .toISOString()
+                    .slice(0, 10),
+
                 instructions: medication.instructions,
               },
 
@@ -453,9 +465,11 @@ export default function PatientPage() {
 
             instructions: medication.instructions,
 
-            startDate: approvedAt.toISOString().slice(0, 10),
+            startDate:
+              medication.startDate || approvedAt.toISOString().slice(0, 10),
 
-            endDate: endDate.toISOString().slice(0, 10),
+            endDate:
+              medication.endDate || endDate.toISOString().slice(0, 10),
 
             status: "active",
 

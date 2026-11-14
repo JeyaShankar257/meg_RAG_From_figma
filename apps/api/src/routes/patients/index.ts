@@ -473,14 +473,36 @@ patientsRouter.get("/:id/medications", async (c) => {
     const patientId = c.req.param("id");
     await ensurePatientAccess(c, patientId);
     const admin = getAdminClient();
-    const { data: medications, error } = await admin
+    const today = new Date().toISOString().split("T")[0];
+
+    const { data: rawMeds, error } = await admin
         .from("medications")
         .select("*")
         .eq("patient_id", patientId)
         .eq("is_active", true);
 
     if (error) throw ApiError.internal("Failed to retrieve medications", error.message);
-    return c.json({ medications: medications || [] });
+
+    // Only return medications whose course has not ended (end_date is null/future)
+    const activeMedications = (rawMeds || [])
+        .filter((m: any) => {
+            if (!m.end_date) return true;
+            return m.end_date >= today;
+        })
+        .map((m: any) => ({
+            id: m.id,
+            patientId: m.patient_id,
+            name: m.name,
+            dosage: m.dosage,
+            form: m.form,
+            prescribedAt: m.prescribed_at,
+            startDate: m.start_date || m.prescribed_at?.slice(0, 10),
+            endDate: m.end_date || null,
+            durationDays: m.duration_days || null,
+            isActive: m.is_active,
+        }));
+
+    return c.json({ medications: activeMedications });
 });
 
 // Prescriptions
@@ -558,6 +580,8 @@ patientsRouter.get("/:id/dose-schedules", async (c) => {
         );
 
         if (missingPrescriptions.length > 0) {
+            const now = new Date();
+            const isToday = dateParam === now.toISOString().split("T")[0];
             const newSlots: any[] = [];
             for (const p of missingPrescriptions) {
                 const formLower = String((p.medications as any)?.form || "").toLowerCase();
@@ -567,15 +591,37 @@ patientsRouter.get("/:id/dose-schedules", async (c) => {
                     ? [8, 14, 20]
                     : [9];
 
-                for (const h of hours) {
-                    const slotDate = new Date(`${dateParam}T00:00:00.000Z`);
-                    slotDate.setUTCHours(h, 0, 0, 0);
-                    newSlots.push({
-                        prescription_id: p.id,
-                        patient_id: patientId,
-                        scheduled_at: slotDate.toISOString(),
-                        window_minutes: 60,
-                    });
+                if (isToday) {
+                    const todaySlots: Date[] = [];
+                    for (const h of hours) {
+                        const slotDate = new Date();
+                        slotDate.setHours(h, 0, 0, 0);
+                        if (slotDate.getTime() >= now.getTime() - 30 * 60 * 1000) {
+                            todaySlots.push(slotDate);
+                        }
+                    }
+                    if (todaySlots.length === 0) {
+                        todaySlots.push(new Date(now.getTime()));
+                    }
+                    for (const slotDate of todaySlots) {
+                        newSlots.push({
+                            prescription_id: p.id,
+                            patient_id: patientId,
+                            scheduled_at: slotDate.toISOString(),
+                            window_minutes: 60,
+                        });
+                    }
+                } else {
+                    for (const h of hours) {
+                        const slotDate = new Date(`${dateParam}T00:00:00.000Z`);
+                        slotDate.setHours(h, 0, 0, 0);
+                        newSlots.push({
+                            prescription_id: p.id,
+                            patient_id: patientId,
+                            scheduled_at: slotDate.toISOString(),
+                            window_minutes: 60,
+                        });
+                    }
                 }
             }
 
@@ -672,23 +718,48 @@ patientsRouter.get("/:id/adherence", async (c) => {
 
     const { data: rawLogs, error } = await admin
         .from("dose_logs")
-        .select("*")
+        .select(`
+            id,
+            schedule_id,
+            patient_id,
+            status,
+            method,
+            reason,
+            idempotency_key,
+            logged_at,
+            dose_schedules (
+                scheduled_at,
+                prescriptions (
+                    medications (
+                        name,
+                        dosage
+                    )
+                )
+            )
+        `)
         .eq("patient_id", patientId)
         .order("logged_at", { ascending: false })
         .limit(90);
 
     if (error) throw ApiError.internal("Failed to retrieve adherence data", error.message);
 
-    const logs = (rawLogs || []).map((l: any) => ({
-        id: l.id,
-        scheduleId: l.schedule_id,
-        patientId: l.patient_id,
-        status: l.status,
-        method: l.method,
-        reason: l.reason,
-        idempotencyKey: l.idempotency_key,
-        loggedAt: l.logged_at || new Date().toISOString(),
-    }));
+    const logs = (rawLogs || []).map((l: any) => {
+        const sched = Array.isArray(l.dose_schedules) ? l.dose_schedules[0] : l.dose_schedules;
+        const rx = Array.isArray(sched?.prescriptions) ? sched.prescriptions[0] : sched?.prescriptions;
+        const med = Array.isArray(rx?.medications) ? rx.medications[0] : rx?.medications;
+        return {
+            id: l.id,
+            scheduleId: l.schedule_id,
+            patientId: l.patient_id,
+            status: l.status,
+            method: l.method,
+            reason: l.reason,
+            idempotencyKey: l.idempotency_key,
+            loggedAt: l.logged_at || new Date().toISOString(),
+            medicationName: med?.name || l.medication_name || undefined,
+            dosage: med?.dosage || l.dosage || undefined,
+        };
+    });
 
     // 1. Fetch total assigned/scheduled doses due so far (scheduled_at <= now)
     const nowIso = new Date().toISOString();
@@ -781,7 +852,7 @@ patientsRouter.get("/:id/adherence", async (c) => {
         takenCount,
         lateCount: 0,
         missedCount,
-        skippedCount: 0,
+        skippedCount,
         currentStreakDays,
         trend,
         calculatedAt: new Date().toISOString(),

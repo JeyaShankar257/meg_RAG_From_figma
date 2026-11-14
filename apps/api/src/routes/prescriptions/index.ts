@@ -16,6 +16,8 @@ const approvalSuggestionSchema = z.object({
     frequency: z.string().optional(),
     quantity: z.number().int().positive().optional(),
     days: z.number().int().positive().optional(),
+    startDate: z.string().optional(),
+    endDate: z.string().optional(),
     instructions: z.string().optional(),
     reasoning: z.string().optional(),
     citations: z
@@ -136,6 +138,18 @@ prescriptionsRouter.post("/:id/approve", requireRole("doctor"), async (c) => {
         const medName = String(validated.editedValues?.name || validated.suggestion?.name || "Medication");
         const medDosage = String(validated.editedValues?.dosage || validated.editedValues?.strength || validated.suggestion?.strength || "");
         const medForm = String(validated.editedValues?.frequency || validated.suggestion?.frequency || "daily");
+        const medDays = Number(validated.editedValues?.days || validated.suggestion?.days || 30);
+        const medStartDate = String(
+            validated.editedValues?.startDate ||
+            validated.suggestion?.startDate ||
+            approvedAt.slice(0, 10),
+        );
+        const defaultEndDate = new Date(new Date(medStartDate).getTime() + medDays * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+        const medEndDate = String(
+            validated.editedValues?.endDate ||
+            validated.suggestion?.endDate ||
+            defaultEndDate,
+        );
 
         // Create medication row
         const { data: newMed, error: medErr } = await admin
@@ -146,6 +160,9 @@ prescriptionsRouter.post("/:id/approve", requireRole("doctor"), async (c) => {
                 dosage: medDosage,
                 form: medForm,
                 prescribed_at: approvedAt,
+                start_date: medStartDate,
+                end_date: medEndDate,
+                duration_days: medDays,
             })
             .select()
             .single();
@@ -163,6 +180,9 @@ prescriptionsRouter.post("/:id/approve", requireRole("doctor"), async (c) => {
             approved_by_profile_id: user.profileId,
             approved_at: approvedAt,
             ai_suggestion_snapshot: validated.suggestion || null,
+            start_date: medStartDate,
+            end_date: medEndDate,
+            duration_days: medDays,
         };
         if (validated.idempotencyKey) {
             newPrescriptionData["idempotency_key"] = validated.idempotencyKey;
@@ -202,17 +222,46 @@ prescriptionsRouter.post("/:id/approve", requireRole("doctor"), async (c) => {
             throw ApiError.forbidden("Doctor is not assigned to this patient");
         }
 
+        const existingMedDays = Number(validated.editedValues?.days || validated.suggestion?.days || (prescription.medications as any)?.duration_days || 30);
+        const existingMedStartDate = String(
+            validated.editedValues?.startDate ||
+            validated.suggestion?.startDate ||
+            (prescription.medications as any)?.start_date ||
+            approvedAt.slice(0, 10),
+        );
+        const existingDefaultEndDate = new Date(new Date(existingMedStartDate).getTime() + existingMedDays * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+        const existingMedEndDate = String(
+            validated.editedValues?.endDate ||
+            validated.suggestion?.endDate ||
+            (prescription.medications as any)?.end_date ||
+            existingDefaultEndDate,
+        );
+
         // 4. Atomically update prescription status to 'approved' and persist suggestion snapshot / idempotency key
         const updateData: Record<string, any> = {
             status: "approved",
             approved_by_profile_id: user.profileId,
             approved_at: approvedAt,
+            start_date: existingMedStartDate,
+            end_date: existingMedEndDate,
+            duration_days: existingMedDays,
         };
         if (validated.idempotencyKey) {
             updateData["idempotency_key"] = validated.idempotencyKey;
         }
         if (validated.suggestion) {
             updateData["ai_suggestion_snapshot"] = validated.suggestion;
+        }
+
+        if (prescription.medication_id) {
+            await admin
+                .from("medications")
+                .update({
+                    start_date: existingMedStartDate,
+                    end_date: existingMedEndDate,
+                    duration_days: existingMedDays,
+                })
+                .eq("id", prescription.medication_id);
         }
 
         const { data: resUpdated, error: updateErr } = await admin
@@ -351,71 +400,126 @@ prescriptionsRouter.post("/:id/approve", requireRole("doctor"), async (c) => {
     });
 
     // 7b. Immediately generate 30 days of dose schedule entries so the Patient Portal has instant dose tracking
+    const medName = String(
+        validated.editedValues?.name ||
+        validated.suggestion?.name ||
+        (prescription.medications as any)?.name ||
+        "Medication",
+    );
+
     try {
-        const formLower = String(
-            validated.editedValues?.frequency ||
-            validated.suggestion?.frequency ||
-            (prescription.medications as any)?.form ||
-            ""
-        ).toLowerCase();
+        const { count: existingSchedCount } = await admin
+            .from("dose_schedules")
+            .select("id", { count: "exact", head: true })
+            .eq("prescription_id", actualPrescriptionId);
 
-        const hours = (formLower.includes("twice") || formLower.includes("bid") || formLower.includes("4 to 6") || formLower.includes("12 hour"))
-            ? [8, 19]
-            : (formLower.includes("three") || formLower.includes("tid") || formLower.includes("8 hour"))
-            ? [8, 14, 20]
-            : [9];
+        if (!existingSchedCount || existingSchedCount === 0) {
+            const formLower = String(
+                validated.editedValues?.frequency ||
+                validated.suggestion?.frequency ||
+                (prescription.medications as any)?.form ||
+                ""
+            ).toLowerCase();
 
-        const startDate = new Date();
-        startDate.setUTCHours(9, 0, 0, 0);
+            const hours = (formLower.includes("twice") || formLower.includes("bid") || formLower.includes("4 to 6") || formLower.includes("12 hour"))
+                ? [8, 19]
+                : (formLower.includes("three") || formLower.includes("tid") || formLower.includes("8 hour"))
+                ? [8, 14, 20]
+                : [9];
 
-        const scheduleRows: any[] = [];
-        for (let day = 0; day < 30; day++) {
-            const dayBase = new Date(startDate.getTime() + day * 24 * 60 * 60 * 1000);
+            const now = new Date();
+            const scheduleRows: any[] = [];
+
+            // For Day 0 (today): Determine active upcoming slots
+            // If the prescription is approved today, ensure at least one active slot is scheduled for today
+            const todaySlots: Date[] = [];
             for (const h of hours) {
-                const scheduledTime = new Date(dayBase);
-                scheduledTime.setUTCHours(h, 0, 0, 0);
+                const slot = new Date();
+                slot.setHours(h, 0, 0, 0);
+                if (slot.getTime() >= now.getTime() - 30 * 60 * 1000) {
+                    todaySlots.push(slot);
+                }
+            }
+
+            // If all standard slots for today have already passed (e.g. once-daily prescribed in the afternoon/evening):
+            // Schedule an active slot for NOW so the patient can take their first dose today without it being marked missed/past-due
+            if (todaySlots.length === 0) {
+                todaySlots.push(new Date(now.getTime()));
+            }
+
+            for (const slot of todaySlots) {
                 scheduleRows.push({
                     prescription_id: actualPrescriptionId,
                     patient_id: prescription.patient_id,
-                    scheduled_at: scheduledTime.toISOString(),
+                    scheduled_at: slot.toISOString(),
                     window_minutes: 60,
                 });
             }
-        }
 
-        if (scheduleRows.length > 0) {
-            const { data: insertedSchedules } = await admin
-                .from("dose_schedules")
-                .insert(scheduleRows)
-                .select("id, scheduled_at, patient_id");
+            const scheduleDays = Number(
+                validated.editedValues?.days ||
+                validated.suggestion?.days ||
+                (prescription.medications as any)?.duration_days ||
+                30,
+            );
+            const totalDays = Math.max(1, Math.min(365, scheduleDays));
 
-            // Enqueue corresponding send_reminder jobs for the worker to process at scheduled times
-            const { data: patientRecord } = await admin
-                .from("patients")
-                .select("contact_email")
-                .eq("id", prescription.patient_id)
-                .maybeSingle();
+            // Future days bounded strictly by totalDays (Day 1 through totalDays - 1)
+            for (let day = 1; day < totalDays; day++) {
+                const dayBase = new Date(now.getTime() + day * 24 * 60 * 60 * 1000);
+                for (const h of hours) {
+                    const scheduledTime = new Date(dayBase);
+                    scheduledTime.setHours(h, 0, 0, 0);
+                    scheduleRows.push({
+                        prescription_id: actualPrescriptionId,
+                        patient_id: prescription.patient_id,
+                        scheduled_at: scheduledTime.toISOString(),
+                        window_minutes: 60,
+                    });
+                }
+            }
 
-            const patientEmail = patientRecord?.contact_email;
-            if (insertedSchedules && insertedSchedules.length > 0) {
-                const reminderJobs = insertedSchedules.map((sched: any) => ({
-                    type: "send_reminder",
-                    status: "pending",
-                    idempotency_key: `rem-${sched.id}`,
-                    correlation_id: correlationId,
-                    next_run_at: sched.scheduled_at,
-                    payload: {
-                        patientId: sched.patient_id,
-                        scheduleId: sched.id,
-                        prescriptionId: actualPrescriptionId,
-                        email: patientEmail,
-                        medicationName: (prescription.medications as any)?.name || "Prescribed Medication",
-                    },
-                }));
+            if (scheduleRows.length > 0) {
+                const { data: insertedSchedules, error: schedErr } = await admin
+                    .from("dose_schedules")
+                    .insert(scheduleRows)
+                    .select("id, scheduled_at, patient_id");
 
-                const { error: remJobErr } = await admin.from("jobs").insert(reminderJobs);
-                if (remJobErr) {
-                    console.warn("[prescriptionApproval] Reminder jobs insertion notice:", remJobErr.message);
+                if (schedErr) {
+                    console.warn("[prescriptionApproval] Dose schedules insertion notice:", schedErr.message);
+                }
+
+                // Enqueue corresponding send_reminder jobs for the worker to process at scheduled times
+                const { data: patientRecord } = await admin
+                    .from("patients")
+                    .select("contact_email")
+                    .eq("id", prescription.patient_id)
+                    .maybeSingle();
+
+                const patientEmail = patientRecord?.contact_email;
+                if (insertedSchedules && insertedSchedules.length > 0) {
+                    const reminderJobs = insertedSchedules.map((sched: any) => ({
+                        type: "send_reminder",
+                        status: "pending",
+                        idempotency_key: `rem-${sched.id}`,
+                        correlation_id: correlationId,
+                        next_run_at: sched.scheduled_at,
+                        payload: {
+                            patientId: sched.patient_id,
+                            scheduleId: sched.id,
+                            prescriptionId: actualPrescriptionId,
+                            email: patientEmail,
+                            medicationName: medName,
+                            message: `Time to take your scheduled dose of ${medName}.`,
+                        },
+                    }));
+
+                    const { error: remJobErr } = await admin
+                        .from("jobs")
+                        .upsert(reminderJobs, { onConflict: "idempotency_key", ignoreDuplicates: true });
+                    if (remJobErr) {
+                        console.warn("[prescriptionApproval] Reminder jobs insertion notice:", remJobErr.message);
+                    }
                 }
             }
         }
@@ -437,12 +541,6 @@ prescriptionsRouter.post("/:id/approve", requireRole("doctor"), async (c) => {
     // 9. Automatically record clinical Visit encounter reflecting this prescription consultation
     let createdVisit: any = null;
     try {
-        const medName = String(
-            validated.editedValues?.name ||
-            validated.suggestion?.name ||
-            (prescription.medications as any)?.name ||
-            "Medication",
-        );
         const medDosage = String(
             validated.editedValues?.dosage ||
             validated.editedValues?.strength ||

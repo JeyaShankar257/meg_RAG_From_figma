@@ -18,6 +18,8 @@ vi.mock("../lib/supabase.js", () => {
             eq: vi.fn().mockReturnThis(),
             in: vi.fn().mockReturnThis(),
             is: vi.fn().mockReturnThis(),
+            gte: vi.fn().mockReturnThis(),
+            lte: vi.fn().mockReturnThis(),
             order: vi.fn().mockReturnThis(),
             limit: vi.fn().mockReturnThis(),
             single: vi.fn().mockImplementation(async () => {
@@ -176,7 +178,7 @@ vi.mock("../lib/supabase.js", () => {
                     error: null,
                 });
             }
-            return resolve({ data: [], error: null });
+            return resolve({ data: [], count: 0, error: null });
         };
 
         return query;

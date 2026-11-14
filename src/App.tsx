@@ -15,14 +15,19 @@ import CareTeamPage from "./pages/doctor/CareTeamPage"
 import NewPatient from "./pages/doctor/NewPatient"
 
 import DoctorSettings from "./pages/doctor/Settings"
+
 import ChangePassword from "./pages/doctor/ChangePassword"
+
 import DoctorAcceptInvitation from "./pages/doctor/AcceptInvitation"
 
 import AdminLogin from "./pages/admin/Login"
+
 import AdminShell from "./components/admin/AdminShell"
+
 import AdminDashboard from "./pages/admin/AdminDashboard"
 
 import PatientLogin from "./pages/patient/Login"
+
 import AcceptInvitation from "./pages/patient/AcceptInvitation"
 
 import PatientShell from "./components/patient/PatientShell"
