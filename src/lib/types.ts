@@ -517,6 +517,7 @@ export interface PatientAdherenceSummary {
   lateCount?: number;
   missedCount: number;
   skippedCount?: number;
+  totalAssignedCount?: number;
   currentStreakDays: number;
   trend: "up" | "down" | "stable";
   calculatedAt: string;
@@ -560,8 +561,12 @@ export interface PatientTransparencyResponse {
     shareWithCareTeam?: boolean;
     allowReminders?: boolean;
     allowAiAnalysis?: boolean;
+    share_with_care_team?: boolean;
+    allow_reminders?: boolean;
+    allow_ai_analysis?: boolean;
     updatedByProfileId?: string;
     updatedAt?: string;
+    updated_at?: string;
   } | null;
   trustSignals: TransparencyTrustSignal[];
   recentAudits: TransparencyAuditSummary[];

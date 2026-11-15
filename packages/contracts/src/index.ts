@@ -200,6 +200,7 @@ export const patientAdherenceSummarySchema = z.object({
     lateCount: z.number().int().nonnegative(),
     missedCount: z.number().int().nonnegative(),
     skippedCount: z.number().int().nonnegative(),
+    totalAssignedCount: z.number().int().nonnegative().optional(),
     currentStreakDays: z.number().int().nonnegative(),
     trend: z.enum(["up", "down", "stable"]),
     calculatedAt: z.string(),

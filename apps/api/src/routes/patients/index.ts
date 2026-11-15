@@ -387,7 +387,7 @@ async function ensurePatientAccess(c: any, patientId: string) {
 
     const patientQuery = admin
         .from("patients")
-        .select("id, workspace_id, profile_id, status, full_name, contact_email");
+        .select("id, workspace_id, profile_id, status, full_name, contact_email, created_at");
     const { data: patient, error } = typeof (patientQuery as any).in === "function"
         ? await (patientQuery as any).in("id", candidateIds).eq("is_deleted", false).limit(1).maybeSingle()
         : await patientQuery.eq("id", patientId).eq("is_deleted", false).maybeSingle();
@@ -411,8 +411,8 @@ async function ensurePatientAccess(c: any, patientId: string) {
             .is("revoked_at", null),
         admin
             .from("consent_records")
-            .select("patient_id, share_with_care_team, allow_reminders, allow_ai_analysis")
-            .eq("patient_id", patientId)
+            .select("id, patient_id, share_with_care_team, allow_reminders, allow_ai_analysis, updated_at")
+            .eq("patient_id", resolvedId)
             .maybeSingle(),
     ]);
 
@@ -845,6 +845,7 @@ patientsRouter.get("/:id/adherence", async (c) => {
     return c.json({
         patientId,
         score,
+        totalAssignedCount: totalAssignedSoFar,
         takenPercentage,
         latePercentage,
         missedPercentage,
@@ -865,7 +866,8 @@ patientsRouter.get("/:id/adherence", async (c) => {
 // Trust & Transparency (GET /patients/:id/transparency)
 patientsRouter.get("/:id/transparency", async (c) => {
     const patientId = c.req.param("id");
-    const { consent } = await ensurePatientAccess(c, patientId);
+    const { patient, consent } = await ensurePatientAccess(c, patientId);
+    const resolvedPatientId = patient.id;
     const correlationId = (c.get("correlationId") as string) || "corr-" + Date.now();
     const admin = getAdminClient();
 
@@ -873,17 +875,52 @@ patientsRouter.get("/:id/transparency", async (c) => {
     const { data: auditRows } = await admin
         .from("audit_events")
         .select("id, action, actor_profile_id, target_type, outcome, occurred_at")
-        .or(`target_id.eq.${patientId},actor_profile_id.eq.${c.get("user")?.profileId}`)
+        .or(`target_id.eq.${resolvedPatientId},actor_profile_id.eq.${c.get("user")?.profileId}`)
         .order("occurred_at", { ascending: false })
         .limit(10);
+
+    const actionDescriptions: Record<string, string> = {
+        view_patient: "Care team reviewed patient chart",
+        read_patient: "Care team reviewed patient chart",
+        log_dose: "Dose recorded by patient",
+        update_consent: "Consent preferences updated",
+        approve_prescription: "Prescription approved by doctor",
+        upload_report: "Medical report uploaded",
+        evaluate_daily_pattern: "Adherence pattern evaluated",
+    };
 
     const recentAudits = (auditRows || []).map((a: any) => ({
         id: a.id,
         action: a.action,
         actorRole: a.actor_profile_id === c.get("user")?.profileId ? "patient" : "care_team",
-        description: `Action ${a.action} recorded with outcome ${a.outcome}`,
+        description: actionDescriptions[a.action] || `Action ${a.action} recorded with outcome ${a.outcome}`,
         occurredAt: a.occurred_at,
     }));
+
+    // Calculate dynamic assurance score based on adherence records & active consent
+    const nowIso = new Date().toISOString();
+    const [{ count: assignedCount }, { data: logs }] = await Promise.all([
+        admin
+            .from("dose_schedules")
+            .select("id", { count: "exact", head: true })
+            .eq("patient_id", resolvedPatientId)
+            .lte("scheduled_at", nowIso),
+        admin
+            .from("dose_logs")
+            .select("status")
+            .eq("patient_id", resolvedPatientId),
+    ]);
+
+    const takenCount = (logs || []).filter((l: any) => l.status === "taken").length;
+    const missedCount = (logs || []).filter((l: any) => l.status === "missed").length;
+    const skippedCount = (logs || []).filter((l: any) => l.status === "skipped").length;
+    const totalAssignedSoFar = (assignedCount || 0) || (takenCount + missedCount + skippedCount);
+
+    const baseScore = totalAssignedSoFar > 0 ? Math.min(100, Math.round((takenCount / totalAssignedSoFar) * 100)) : 100;
+    const assuranceScore = consent?.share_with_care_team ? baseScore : Math.max(0, baseScore - 10);
+
+    const latestAuditDate = recentAudits[0]?.occurredAt || patient.created_at || new Date().toISOString();
+    const consentDate = consent?.updated_at || patient.created_at || new Date().toISOString();
 
     const trustSignals = [
         {
@@ -891,7 +928,7 @@ patientsRouter.get("/:id/transparency", async (c) => {
             label: "Care Team Access",
             status: "verified" as const,
             description: "Only authorized clinicians assigned to your care team may access your medical history.",
-            lastVerifiedAt: new Date().toISOString(),
+            lastVerifiedAt: consentDate,
         },
         {
             category: "AI Advisory",
@@ -900,23 +937,23 @@ patientsRouter.get("/:id/transparency", async (c) => {
             description: consent?.allow_ai_analysis
                 ? "Diagnostic and pattern analysis algorithms are authorized by you."
                 : "AI analysis is currently disabled per your consent preferences.",
-            lastVerifiedAt: new Date().toISOString(),
+            lastVerifiedAt: consentDate,
         },
         {
             category: "Audit Trail",
             label: "Immutable Audit Logging",
             status: "monitored" as const,
             description: "Every access, update, and dose recorded is permanently logged for clinical integrity.",
-            lastVerifiedAt: new Date().toISOString(),
+            lastVerifiedAt: latestAuditDate,
         },
     ];
 
     return c.json({
-        patientId,
+        patientId: resolvedPatientId,
         consent: consent || null,
         trustSignals,
         recentAudits,
-        assuranceScore: 98,
+        assuranceScore,
         freshnessTimestamp: new Date().toISOString(),
         correlationId,
     });

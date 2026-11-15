@@ -656,8 +656,12 @@ export const api = {
               shareWithCareTeam: true,
               allowReminders: true,
               allowAiAnalysis: false,
+              share_with_care_team: true,
+              allow_reminders: true,
+              allow_ai_analysis: false,
               updatedByProfileId: "prof-demo",
               updatedAt: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
             },
             trustSignals: [
               {
@@ -683,7 +687,7 @@ export const api = {
               },
             ],
             recentAudits: [],
-            assuranceScore: 98,
+            assuranceScore: 100,
             freshnessTimestamp: new Date().toISOString(),
             correlationId: `corr-demo-${Date.now()}`,
           }),

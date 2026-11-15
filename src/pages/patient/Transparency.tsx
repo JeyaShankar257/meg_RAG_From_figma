@@ -1,9 +1,13 @@
 import { useEffect, useState } from "react"
 
 import Card, { CardHeader, CardTitle } from "../../components/ui/Card"
+
 import Badge from "../../components/ui/Badge"
+
 import AdherenceRing from "../../components/charts/AdherenceRing"
+
 import { api, getPatientId } from "../../lib/api/apiClient"
+
 import { useSession } from "../../lib/auth/SessionProvider"
 
 export default function Transparency() {
@@ -11,84 +15,129 @@ export default function Transparency() {
 
   const [consentMap, setConsentMap] = useState<Record<string, boolean>>({
     care_team: true,
-    escalations: true,
-    reports: true,
+
+    reminders: true,
+
     ai_analysis: false,
   })
 
   const [loading, setLoading] = useState(true)
+
   const [error, setError] = useState("")
+
   const [saving, setSaving] = useState(false)
+
   const [correctionMessage, setCorrectionMessage] = useState("")
 
   const [adherenceData, setAdherenceData] = useState<{
     score: number
+
     taken: number
+
     late: number
+
     skipped: number
+
     missed: number
-    deliveryFailures: number
+
+    totalAssignedCount: number
   }>({
     score: 0,
+
     taken: 0,
+
     late: 0,
+
     skipped: 0,
+
     missed: 0,
-    deliveryFailures: 0,
+
+    totalAssignedCount: 0,
   })
 
   const [trustData, setTrustData] = useState<{
     assuranceScore: number
+
     trustSignals: Array<{
       category: string
+
       label: string
+
       status: string
+
       description: string
+
       lastVerifiedAt: string
     }>
+
     recentAudits: Array<{
       id: string
+
       action: string
+
       actorRole: string
+
       description: string
+
       occurredAt: string
     }>
   }>({
-    assuranceScore: 98,
+    assuranceScore: 0,
+
     trustSignals: [],
+
     recentAudits: [],
   })
 
   useEffect(() => {
     if (!user) return
+
     const patientId = getPatientId(user)
+
     if (!patientId) {
       setLoading(false)
+
       return
     }
 
     setLoading(true)
+
     setError("")
 
     Promise.all([
       api.patients.getConsent(patientId),
+
       api.patients.getTransparency(patientId),
+
       api.patients.getAdherence(patientId),
     ])
+
       .then(([{ consent }, transparency, adherence]) => {
         if (consent) {
           setConsentMap({
-            care_team: consent.share_with_care_team ?? true,
-            escalations: consent.share_with_care_team ?? true,
-            reports: consent.share_with_care_team ?? true,
-            ai_analysis: consent.allow_ai_analysis ?? false,
+            care_team:
+              consent.share_with_care_team ??
+              (consent as any).shareWithCareTeam ??
+              true,
+
+            reminders:
+              consent.allow_reminders ??
+              (consent as any).allowReminders ??
+              true,
+
+            ai_analysis:
+              consent.allow_ai_analysis ??
+              (consent as any).allowAiAnalysis ??
+              false,
           })
         }
 
         if (transparency) {
           setTrustData({
             assuranceScore: transparency.assuranceScore ?? 100,
+
             trustSignals: transparency.trustSignals || [],
+
             recentAudits: transparency.recentAudits || [],
           })
         }
@@ -96,34 +145,52 @@ export default function Transparency() {
         if (adherence) {
           setAdherenceData({
             score: adherence.score ?? 0,
+
             taken: adherence.takenCount ?? 0,
+
             late: adherence.lateCount ?? 0,
+
             skipped: adherence.skippedCount ?? 0,
+
             missed: adherence.missedCount ?? 0,
-            deliveryFailures: (adherence as any).deliveryFailures ?? 0,
+
+            totalAssignedCount:
+              adherence.totalAssignedCount ??
+              (adherence.takenCount ?? 0) +
+                (adherence.lateCount ?? 0) +
+                (adherence.skippedCount ?? 0) +
+                (adherence.missedCount ?? 0),
           })
         }
       })
+
       .catch((err) =>
         setError(err?.message || "Transparency data could not be loaded."),
       )
+
       .finally(() => setLoading(false))
   }, [user])
 
   const toggleConsent = async (key: string) => {
     const next = { ...consentMap, [key]: !consentMap[key] }
+
     setConsentMap(next)
+
     if (!user) return
 
     setSaving(true)
+
     try {
       await api.patients.updateConsent(getPatientId(user), {
         shareWithCareTeam: next.care_team,
-        allowReminders: next.reports,
+
+        allowReminders: next.reminders,
+
         allowAiAnalysis: next.ai_analysis,
       })
     } catch {
       setConsentMap(consentMap)
+
       setError("Consent could not be saved. Try again.")
     } finally {
       setSaving(false)
@@ -134,18 +201,24 @@ export default function Transparency() {
     const description = window.prompt(
       "Describe the correction you would like reviewed:",
     )
+
     if (!description?.trim()) return
 
     setCorrectionMessage("")
+
     try {
       if (user) {
         await api.corrections.create({
           patientId: getPatientId(user),
+
           targetType: "adherence",
+
           targetId: "patient-request",
+
           description: description.trim(),
         })
       }
+
       setCorrectionMessage(
         "Your correction request was submitted for care-team review.",
       )
@@ -154,7 +227,7 @@ export default function Transparency() {
     }
   }
 
-  const trustScore = trustData.assuranceScore || adherenceData.score || 95
+  const trustScore = trustData.assuranceScore || adherenceData.score || 100
 
   return (
     <div className="p-4 lg:p-6 space-y-5 animate-fade-in">
@@ -247,22 +320,31 @@ export default function Transparency() {
           {[
             {
               label: "Dose timestamps",
+
               detail: "When you log each dose (method, time, status)",
             },
+
             {
               label: "Reminder delivery",
+
               detail: "Whether reminders were delivered, bounced, or failed",
             },
+
             {
               label: "Late logging patterns",
+
               detail: "If doses are consistently logged late vs. on time",
             },
+
             {
               label: "Reminder response time",
+
               detail: "How quickly you log a dose after a reminder",
             },
+
             {
               label: "Skip/miss history",
+
               detail: "Dates and any reasons you provided for skips",
             },
           ].map((item) => (
@@ -291,27 +373,38 @@ export default function Transparency() {
           {[
             {
               label: "Scheduled",
+
               value:
+                adherenceData.totalAssignedCount ||
                 adherenceData.taken +
-                adherenceData.late +
-                adherenceData.skipped +
-                adherenceData.missed,
+                  adherenceData.late +
+                  adherenceData.skipped +
+                  adherenceData.missed,
+
+              note: "Total doses due so far",
             },
+
             {
               label: "Logged",
-              value:
-                adherenceData.taken +
-                adherenceData.late +
-                adherenceData.skipped,
+
+              value: adherenceData.taken + adherenceData.late,
+
+              note: "Doses taken",
             },
+
             {
-              label: "Delivery failures",
-              value: adherenceData.deliveryFailures,
-              note: "Not counted as misses",
+              label: "Skipped",
+
+              value: adherenceData.skipped,
+
+              note: "With clinical reason",
             },
+
             {
               label: "True misses",
+
               value: adherenceData.missed,
+
               note: "Patient-attributable",
             },
           ].map((s) => (
@@ -334,14 +427,14 @@ export default function Transparency() {
       </Card>
 
       {/* Recent access audit trail */}
-      {trustData.recentAudits.length > 0 && (
-        <Card padding="md">
-          <CardHeader>
-            <CardTitle>Recent Care Team Access Audit</CardTitle>
-            <Badge variant="default" size="sm">
-              Immutable
-            </Badge>
-          </CardHeader>
+      <Card padding="md">
+        <CardHeader>
+          <CardTitle>Recent Care Team Access Audit</CardTitle>
+          <Badge variant="default" size="sm">
+            Immutable
+          </Badge>
+        </CardHeader>
+        {trustData.recentAudits.length > 0 ? (
           <div className="space-y-2">
             {trustData.recentAudits.map((audit) => (
               <div
@@ -359,16 +452,24 @@ export default function Transparency() {
                 <span className="text-slate-400 font-mono">
                   {new Date(audit.occurredAt).toLocaleString(undefined, {
                     month: "short",
+
                     day: "numeric",
+
                     hour: "2-digit",
+
                     minute: "2-digit",
                   })}
                 </span>
               </div>
             ))}
           </div>
-        </Card>
-      )}
+        ) : (
+          <div className="p-4 bg-slate-50 rounded-xl text-center text-xs text-slate-500">
+            No care team access events recorded yet. Every time a clinician
+            accesses your records, an immutable log entry will appear here.
+          </div>
+        )}
+      </Card>
 
       {/* Consent controls */}
       <Card padding="md">
@@ -380,30 +481,32 @@ export default function Transparency() {
           {[
             {
               key: "care_team",
+
               label: "Share adherence data with care team",
-              detail: "Required for clinical monitoring",
+
+              detail: "Required for clinical care monitoring",
+
               required: true,
             },
 
             {
-              key: "escalations",
-              label: "Allow escalation sharing with broader care team",
-              detail: "Notifies nurse coordinator for urgent patterns",
-              required: false,
-            },
+              key: "reminders",
 
-            {
-              key: "reports",
-              label: "Receive weekly and monthly reports by email",
-              detail: "Encouragement-focused adherence summaries",
+              label: "Receive automated routine dose reminders & notifications",
+
+              detail: "Automated dose reminder alerts and schedules",
+
               required: false,
             },
 
             {
               key: "ai_analysis",
+
               label: "Allow AI diagnostic analysis for my visits",
+
               detail:
                 "AI output is advisory only; doctor reviews before any action",
+
               required: false,
             },
           ].map((item) => (

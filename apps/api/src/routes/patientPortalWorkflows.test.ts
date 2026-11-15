@@ -304,7 +304,7 @@ describe("Patient Portal Workflows (Task 2.1 - 2.6)", () => {
             });
             expect(res.status).toBe(200);
             const body = (await res.json()) as any;
-            expect(body.assuranceScore).toBe(98);
+            expect(body.assuranceScore).toBe(100);
             expect(body.trustSignals).toBeInstanceOf(Array);
             expect(body.consent).toBeDefined();
             expect(body.consent.share_with_care_team).toBe(true);
