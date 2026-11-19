@@ -95,12 +95,14 @@ export default function PatientDashboard() {
 
     setError("")
 
+    const todayLocalDate = new Date().toLocaleDateString("en-CA")
+
     Promise.all([
       api.patients.getMedications(patientId),
 
       api.patients.getAdherence(patientId),
 
-      api.patients.getDoseSchedules(patientId),
+      api.patients.getDoseSchedules(patientId, todayLocalDate),
 
       api.patients.getVisits(patientId).catch(() => ({ visits: [] })),
     ])

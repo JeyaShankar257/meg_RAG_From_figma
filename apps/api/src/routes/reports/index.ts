@@ -221,20 +221,25 @@ reportsRouter.get("/", async (c) => {
     if (!patientId) throw ApiError.badRequest("patientId query param is required");
 
     const admin = getAdminClient();
+    const candidateIds = [
+        patientId,
+        patientId.replace(/^PT-/i, "p-"),
+        patientId.replace(/^PT-/i, "P-"),
+    ];
 
     // Verify patient access
-    const { data: patient } = await admin
-        .from("patients")
-        .select("id, workspace_id, profile_id")
-        .eq("id", patientId)
-        .single();
+    const patientQuery = admin.from("patients").select("id, workspace_id, profile_id");
+    const { data: patient } = typeof (patientQuery as any).in === "function"
+        ? await (patientQuery as any).in("id", candidateIds).limit(1).maybeSingle()
+        : await patientQuery.eq("id", patientId).maybeSingle();
 
     if (!patient) throw ApiError.notFound("Patient not found");
+    const resolvedPatientId = patient.id;
 
     const [{ data: assignments }, { data: grants }, { data: consent }] = await Promise.all([
-        admin.from("care_team_assignments").select("*").eq("patient_id", patientId),
-        admin.from("care_grants").select("*").eq("patient_id", patientId),
-        admin.from("consent_records").select("*").eq("patient_id", patientId).maybeSingle(),
+        admin.from("care_team_assignments").select("*").eq("patient_id", resolvedPatientId),
+        admin.from("care_grants").select("*").eq("patient_id", resolvedPatientId),
+        admin.from("consent_records").select("*").eq("patient_id", resolvedPatientId).maybeSingle(),
     ]);
 
     const authCheck = authorizePatientAccess({
@@ -253,7 +258,7 @@ reportsRouter.get("/", async (c) => {
         })),
         consent: consent
             ? {
-                  patientId,
+                  patientId: resolvedPatientId,
                   shareWithCareTeam: consent.share_with_care_team,
                   allowReminders: consent.allow_reminders,
                   allowAiAnalysis: consent.allow_ai_analysis,
@@ -267,7 +272,7 @@ reportsRouter.get("/", async (c) => {
     let query = admin
         .from("patient_reports")
         .select("*")
-        .eq("patient_id", patientId)
+        .eq("patient_id", resolvedPatientId)
         .order("uploaded_at", { ascending: false });
 
     if (user.role === "care_team") {

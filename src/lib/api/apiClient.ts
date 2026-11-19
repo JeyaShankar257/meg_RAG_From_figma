@@ -4,11 +4,13 @@ import {
   DEMO_DOCTOR,
   DEMO_PATIENTS,
   DEMO_PRESCRIPTIONS,
+  DEMO_REPORTS,
   DEMO_VISITS,
 } from "../mockData"
 import type {
   Patient,
   Prescription,
+  Report,
   Visit,
   DoctorDashboardResponse,
   PatientPipelineResponse,
@@ -642,6 +644,29 @@ export const api = {
               { date: "2026-09-01", value: 95 },
             ],
           }),
+
+    getAdherenceReports: (patientId: string) =>
+      isBackendConfigured()
+        ? request<{ success: boolean; reports: Report[] }>(
+            `/patients/${patientId}/adherence-reports`,
+          )
+        : Promise.resolve({ success: true, reports: DEMO_REPORTS }),
+
+    generateAdherenceReport: (
+      patientId: string,
+      period: "weekly" | "monthly",
+      forceSend = true,
+    ) =>
+      isBackendConfigured()
+        ? request<{ success: boolean; report: Report }>(
+            `/patients/${patientId}/adherence-reports/generate`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ period, forceSend }),
+            },
+          )
+        : Promise.resolve({ success: true, report: DEMO_REPORTS[0] }),
 
     getTransparency: (patientId: string) =>
       isBackendConfigured()

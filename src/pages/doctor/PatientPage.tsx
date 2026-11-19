@@ -1610,6 +1610,11 @@ export default function PatientPage() {
           <div className="space-y-5 animate-fade-in">
             <RagAssistantPanel
               patientId={patient.id}
+              patient={patient}
+              visits={visits}
+              prescriptions={prescriptions}
+              patientReports={patientReports}
+              adherence={adherence}
               patientContext={[
                 ...patient.conditions,
 

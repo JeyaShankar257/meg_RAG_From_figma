@@ -85,96 +85,116 @@ export default function PatientVisits() {
       <div className="relative">
         <div className="absolute left-4 top-0 bottom-0 w-0.5 bg-slate-200" />
         <div className="space-y-3">
-          {visits.map((visit, i) => (
-            <div
-              key={visit.id}
-              className="relative pl-12 animate-slide-in-up"
-              style={{ animationDelay: `${i * 60}ms` } as React.CSSProperties}
-            >
-              <div
-                className={`absolute left-2.5 top-4 w-3 h-3 rounded-full border-2 z-10 ${
-                  i === 0
-                    ? "bg-teal-500 border-teal-500"
-                    : "bg-white border-slate-300"
-                }`}
-              />
-              <Card
-                hover
-                onClick={() =>
-                  setExpanded(expanded === visit.id ? null : visit.id)
-                }
-              >
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <div className="flex items-center gap-2 flex-wrap mb-0.5">
-                      <span className="text-xs font-mono text-slate-400">
-                        {visit.date}
-                      </span>
-                      {i === 0 && (
-                        <Badge variant="success" size="sm">
-                          Latest
-                        </Badge>
-                      )}
-                    </div>
-                    <h3 className="text-sm font-semibold text-slate-900">
-                      {visit.condition}
-                    </h3>
-                    <p className="text-xs text-slate-500 mt-0.5">
-                      {visit.doctor}
-                    </p>
-                    <div className="flex gap-1.5 mt-2 flex-wrap">
-                      {visit.symptoms.map((s) => (
-                        <span
-                          key={s}
-                          className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full"
-                        >
-                          {s}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                  <svg
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    width={16}
-                    height={16}
-                    className={`text-slate-400 flex-shrink-0 mt-1 transition-transform ${
-                      expanded === visit.id ? "rotate-180" : ""
-                    }`}
-                  >
-                    <path
-                      d="M19 9l-7 7-7-7"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  </svg>
-                </div>
+          {visits.map((visit, i) => {
+            const visitDate = visit.date || (visit as any).visit_date || "—"
+            const doctorName =
+              visit.doctor ||
+              (visit as any).profiles?.full_name ||
+              "Care Team Doctor"
+            const proposedSol =
+              visit.proposedSolution || (visit as any).proposed_solution
 
-                {expanded === visit.id && (
-                  <div className="mt-4 space-y-3 border-t border-slate-100 pt-4 animate-fade-in">
+            return (
+              <div
+                key={visit.id}
+                className="relative pl-12 animate-slide-in-up"
+                style={{ animationDelay: `${i * 60}ms` } as React.CSSProperties}
+              >
+                <div
+                  className={`absolute left-2.5 top-4 w-3 h-3 rounded-full border-2 z-10 ${
+                    i === 0
+                      ? "bg-teal-500 border-teal-500"
+                      : "bg-white border-slate-300"
+                  }`}
+                />
+                <Card
+                  hover
+                  onClick={() =>
+                    setExpanded(expanded === visit.id ? null : visit.id)
+                  }
+                >
+                  <div className="flex items-start justify-between gap-4">
                     <div>
-                      <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">
-                        What was discussed
+                      <div className="flex items-center gap-2 flex-wrap mb-0.5">
+                        <span className="text-xs font-mono text-slate-500 font-medium">
+                          {visitDate}
+                        </span>
+                        {i === 0 && (
+                          <Badge variant="success" size="sm">
+                            Latest
+                          </Badge>
+                        )}
+                      </div>
+                      <h3 className="text-sm font-semibold text-slate-900">
+                        {visit.condition}
+                      </h3>
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        {doctorName}
                       </p>
-                      <p className="text-sm text-slate-700 leading-relaxed">
-                        {visit.notes}
-                      </p>
+                      <div className="flex gap-1.5 mt-2 flex-wrap">
+                        {visit.symptoms.map((s) => (
+                          <span
+                            key={s}
+                            className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full"
+                          >
+                            {s}
+                          </span>
+                        ))}
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">
-                        Outcome
-                      </p>
-                      <p className="text-sm text-emerald-700 bg-emerald-50 px-3 py-2 rounded-lg border border-emerald-100">
-                        {visit.outcome}
-                      </p>
-                    </div>
+                    <svg
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      width={16}
+                      height={16}
+                      className={`text-slate-400 flex-shrink-0 mt-1 transition-transform ${
+                        expanded === visit.id ? "rotate-180" : ""
+                      }`}
+                    >
+                      <path
+                        d="M19 9l-7 7-7-7"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
                   </div>
-                )}
-              </Card>
-            </div>
-          ))}
+
+                  {expanded === visit.id && (
+                    <div className="mt-4 space-y-3 border-t border-slate-100 pt-4 animate-fade-in">
+                      <div>
+                        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">
+                          What was discussed
+                        </p>
+                        <p className="text-sm text-slate-700 leading-relaxed">
+                          {visit.notes || "Routine clinical review."}
+                        </p>
+                      </div>
+                      {proposedSol && (
+                        <div>
+                          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">
+                            Care Plan &amp; Treatment Instructions
+                          </p>
+                          <p className="text-sm text-teal-900 bg-teal-50 px-3 py-2 rounded-lg border border-teal-100 leading-relaxed">
+                            {proposedSol}
+                          </p>
+                        </div>
+                      )}
+                      <div>
+                        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">
+                          Outcome
+                        </p>
+                        <p className="text-sm text-emerald-700 bg-emerald-50 px-3 py-2 rounded-lg border border-emerald-100">
+                          {visit.outcome}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </Card>
+              </div>
+            )
+          })}
         </div>
       </div>
     </div>

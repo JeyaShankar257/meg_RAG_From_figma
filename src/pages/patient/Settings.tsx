@@ -18,24 +18,38 @@ export default function PatientSettings() {
   const [error, setError] = useState("")
 
   const [loading, setLoading] = useState(isBackendConfigured())
+  const [phone, setPhone] = useState("")
+  const [emailReminders, setEmailReminders] = useState(true)
+  const [smsReminders, setSmsReminders] = useState(false)
+  const [weeklyReports, setWeeklyReports] = useState(true)
+  const [careTeamMessages, setCareTeamMessages] = useState(true)
+  const [highContrast, setHighContrast] = useState(false)
+  const [largeText, setLargeText] = useState(false)
+  const [reducedMotion, setReducedMotion] = useState(false)
 
   const [preferences, setPreferences] = useState({
     channel: "email" as "email" | "sms" | "push",
-
     enabled: true,
-
     quietHoursStart: "21:00",
-
     quietHoursEnd: "07:00",
   })
 
   useEffect(() => {
     if (!isBackendConfigured() || !user) return
 
-    api.patients
-      .getSettings(getPatientId(user))
+    const patientId = getPatientId(user)
+    Promise.all([
+      api.patients.getSettings(patientId).catch(() => ({ settings: [] })),
+      api.patients.get(patientId).catch(() => null),
+    ])
+      .then(([{ settings }, patientRes]) => {
+        const patientPhone =
+          (patientRes?.patient as any)?.contact_phone ||
+          patientRes?.patient?.phone
+        if (patientPhone) {
+          setPhone(patientPhone)
+        }
 
-      .then(({ settings }) => {
         const setting = settings.find(
           (item) => typeof item === "object" && item !== null,
         ) as {
@@ -48,20 +62,20 @@ export default function PatientSettings() {
         if (setting) {
           setPreferences((current) => ({
             channel: setting.channel ?? current.channel,
-
             enabled: setting.enabled ?? current.enabled,
-
             quietHoursStart:
               setting.quiet_hours_start?.slice(0, 5) ?? current.quietHoursStart,
-
             quietHoursEnd:
               setting.quiet_hours_end?.slice(0, 5) ?? current.quietHoursEnd,
           }))
+          if (setting.channel === "sms") {
+            setSmsReminders(setting.enabled ?? true)
+          } else {
+            setEmailReminders(setting.enabled ?? true)
+          }
         }
       })
-
       .catch(() => setError("Settings could not be loaded. Retry to refresh."))
-
       .finally(() => setLoading(false))
   }, [user])
 
@@ -70,7 +84,15 @@ export default function PatientSettings() {
 
     if (isBackendConfigured() && user) {
       try {
-        await api.patients.updateSettings(getPatientId(user), preferences)
+        await api.patients.updateSettings(getPatientId(user), {
+          ...preferences,
+          phone,
+          enabled: emailReminders || smsReminders,
+          channel: smsReminders ? "sms" : "email",
+          emailDoseReminders: emailReminders,
+          smsDoseReminders: smsReminders,
+          weeklyReportEmail: weeklyReports,
+        })
       } catch {
         setError("Settings could not be saved. Try again.")
         return
@@ -78,9 +100,19 @@ export default function PatientSettings() {
     }
 
     setSaved(true)
-
     setTimeout(() => setSaved(false), 2000)
   }
+
+  const displayName = user?.fullName || "Patient"
+  const initials = displayName
+    .split(/[\s.@_-]+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((s) => s[0].toUpperCase())
+    .join("") || "PT"
+  const patientDisplayId = user?.patientId?.toUpperCase().startsWith("P-")
+    ? `PT-${user.patientId.slice(2)}`
+    : (user?.patientId || "PT-—")
 
   return (
     <div className="p-4 lg:p-6 space-y-5 animate-fade-in">
@@ -103,22 +135,29 @@ export default function PatientSettings() {
         <h2 className="text-sm font-semibold text-slate-800 mb-4">Profile</h2>
         <div className="flex items-center gap-4 mb-4">
           <div className="w-12 h-12 rounded-full bg-teal-100 flex items-center justify-center text-teal-700 font-bold text-lg">
-            MR
+            {initials}
           </div>
           <div>
             <p className="text-sm font-semibold text-slate-900">
-              Marcus Rivera
+              {displayName}
             </p>
-            <p className="text-xs text-slate-500 font-mono">PT-00231</p>
+            <p className="text-xs text-slate-500 font-mono">{patientDisplayId}</p>
           </div>
         </div>
         <div className="grid sm:grid-cols-2 gap-4">
           <Input
             label="Email"
             type="email"
-            defaultValue={user?.email ?? "m.rivera@email.com"}
+            value={user?.email ?? ""}
+            disabled
           />
-          <Input label="Phone" type="tel" defaultValue="+1 (555) 204-3817" />
+          <Input
+            label="Phone"
+            type="tel"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            placeholder="Enter contact phone"
+          />
         </div>
       </Card>
 
@@ -175,27 +214,42 @@ export default function PatientSettings() {
           Communication
         </h2>
         <div className="space-y-3">
-          {[
-            { label: "Email dose reminders", checked: true },
-
-            { label: "Weekly report emails", checked: true },
-
-            { label: "Monthly report emails", checked: true },
-
-            { label: "Care team messages", checked: true },
-          ].map((item) => (
-            <label
-              key={item.label}
-              className="flex items-center justify-between cursor-pointer"
-            >
-              <span className="text-sm text-slate-700">{item.label}</span>
-              <input
-                type="checkbox"
-                defaultChecked={item.checked}
-                className="rounded border-slate-300 text-teal-600"
-              />
-            </label>
-          ))}
+          <label className="flex items-center justify-between cursor-pointer">
+            <span className="text-sm text-slate-700">Email dose reminders</span>
+            <input
+              type="checkbox"
+              checked={emailReminders}
+              onChange={(e) => setEmailReminders(e.target.checked)}
+              className="rounded border-slate-300 text-teal-600 focus:ring-teal-500"
+            />
+          </label>
+          <label className="flex items-center justify-between cursor-pointer">
+            <span className="text-sm text-slate-700">SMS dose reminders</span>
+            <input
+              type="checkbox"
+              checked={smsReminders}
+              onChange={(e) => setSmsReminders(e.target.checked)}
+              className="rounded border-slate-300 text-teal-600 focus:ring-teal-500"
+            />
+          </label>
+          <label className="flex items-center justify-between cursor-pointer">
+            <span className="text-sm text-slate-700">Weekly report emails</span>
+            <input
+              type="checkbox"
+              checked={weeklyReports}
+              onChange={(e) => setWeeklyReports(e.target.checked)}
+              className="rounded border-slate-300 text-teal-600 focus:ring-teal-500"
+            />
+          </label>
+          <label className="flex items-center justify-between cursor-pointer">
+            <span className="text-sm text-slate-700">Care team messages</span>
+            <input
+              type="checkbox"
+              checked={careTeamMessages}
+              onChange={(e) => setCareTeamMessages(e.target.checked)}
+              className="rounded border-slate-300 text-teal-600 focus:ring-teal-500"
+            />
+          </label>
         </div>
       </Card>
 
@@ -204,25 +258,33 @@ export default function PatientSettings() {
           Accessibility
         </h2>
         <div className="space-y-3">
-          {[
-            { label: "High contrast mode", checked: false },
-
-            { label: "Large text mode", checked: false },
-
-            { label: "Reduced motion", checked: false },
-          ].map((item) => (
-            <label
-              key={item.label}
-              className="flex items-center justify-between cursor-pointer"
-            >
-              <span className="text-sm text-slate-700">{item.label}</span>
-              <input
-                type="checkbox"
-                defaultChecked={item.checked}
-                className="rounded border-slate-300 text-teal-600"
-              />
-            </label>
-          ))}
+          <label className="flex items-center justify-between cursor-pointer">
+            <span className="text-sm text-slate-700">High contrast mode</span>
+            <input
+              type="checkbox"
+              checked={highContrast}
+              onChange={(e) => setHighContrast(e.target.checked)}
+              className="rounded border-slate-300 text-teal-600 focus:ring-teal-500"
+            />
+          </label>
+          <label className="flex items-center justify-between cursor-pointer">
+            <span className="text-sm text-slate-700">Large text mode</span>
+            <input
+              type="checkbox"
+              checked={largeText}
+              onChange={(e) => setLargeText(e.target.checked)}
+              className="rounded border-slate-300 text-teal-600 focus:ring-teal-500"
+            />
+          </label>
+          <label className="flex items-center justify-between cursor-pointer">
+            <span className="text-sm text-slate-700">Reduced motion</span>
+            <input
+              type="checkbox"
+              checked={reducedMotion}
+              onChange={(e) => setReducedMotion(e.target.checked)}
+              className="rounded border-slate-300 text-teal-600 focus:ring-teal-500"
+            />
+          </label>
         </div>
       </Card>
 

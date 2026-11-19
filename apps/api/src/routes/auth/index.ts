@@ -1451,7 +1451,7 @@ authRouter.get("/me", authMiddleware, async (c) => {
   const { data: profile } = await admin
     .from("profiles")
     .select(
-      "id, role, email, workspace_id, approval_status, must_change_password",
+      "id, role, email, full_name, workspace_id, approval_status, must_change_password",
     )
     .eq("id", user.profileId)
     .maybeSingle()
@@ -1461,6 +1461,7 @@ authRouter.get("/me", authMiddleware, async (c) => {
       id: user.profileId,
       ...(user.patientId ? { patientId: user.patientId } : {}),
       role: user.role,
+      fullName: profile?.full_name ?? undefined,
       email: user.email,
       workspaceId: user.workspaceId,
       approvalStatus: profile?.approval_status ?? "approved",

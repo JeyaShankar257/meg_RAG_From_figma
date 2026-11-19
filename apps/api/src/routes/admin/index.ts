@@ -145,4 +145,35 @@ adminRouter.post("/reminders/dispatch-due", async (c) => {
     });
 });
 
+/**
+ * POST /admin/reports/dispatch-periodic
+ * Generates and delivers weekly or monthly clinical adherence reports to patients.
+ * Query params: ?period=weekly|monthly&patientId=optional&force=true|false
+ */
+adminRouter.post("/reports/dispatch-periodic", async (c) => {
+    const { dispatchPeriodicReportsToAllPatients } = await import("../../services/patientAdherenceReportService.js");
+    const correlationId = (c.get("correlationId") as string) || `admin-rep-${Date.now()}`;
+    const periodParam = c.req.query("period") || "weekly";
+    const patientIdParam = c.req.query("patientId");
+    const forceParam = c.req.query("force") === "true";
+
+    const period = periodParam === "monthly" ? "monthly" : "weekly";
+
+    try {
+        const result = await dispatchPeriodicReportsToAllPatients(period, {
+            forceSend: forceParam,
+            specificPatientId: patientIdParam || undefined,
+            correlationId,
+        });
+
+        return c.json(result);
+    } catch (err: any) {
+        return c.json({
+            success: false,
+            error: err?.message || "Failed to dispatch periodic reports",
+            correlationId,
+        }, 500);
+    }
+});
+
 

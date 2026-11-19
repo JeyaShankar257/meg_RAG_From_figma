@@ -46,6 +46,7 @@ export default function DoseCenter() {
   const [logging, setLogging] = useState<string | null>(null)
   const [skippingId, setSkippingId] = useState<string | null>(null)
   const [skipReason, setSkipReason] = useState("")
+  const [otherNote, setOtherNote] = useState("")
   const [justTaken, setJustTaken] = useState<string | null>(null)
 
   useEffect(() => {
@@ -59,8 +60,10 @@ export default function DoseCenter() {
     setLoading(true)
     setError("")
 
+    const todayLocalDate = new Date().toLocaleDateString("en-CA")
+
     Promise.all([
-      api.patients.getDoseSchedules(patientId),
+      api.patients.getDoseSchedules(patientId, todayLocalDate),
       api.patients.getAdherence(patientId),
     ])
       .then(([schedRes, adhRes]) => {
@@ -201,13 +204,18 @@ export default function DoseCenter() {
     setError("")
     setLogging(id)
 
+    const finalReason =
+      skipReason === "Other" && otherNote.trim()
+        ? `Other: ${otherNote.trim()}`
+        : skipReason
+
     try {
       if (user) {
         await api.doses.log({
           patientId: getPatientId(user),
           scheduleId: id,
           status: "skipped",
-          reason: skipReason,
+          reason: finalReason,
           idempotencyKey: crypto.randomUUID(),
         })
       }
@@ -230,7 +238,7 @@ export default function DoseCenter() {
               status: "skipped",
               isActionable: false,
               isOverdue: false,
-              reason: skipReason,
+              reason: finalReason,
               loggedAt: nowFormatted,
             }
           : d,
@@ -244,7 +252,7 @@ export default function DoseCenter() {
         time: nowFormatted,
         name: `${targetDose.name} ${targetDose.strength}`.trim(),
         status: "skipped",
-        logged: `Reason: ${skipReason}`,
+        logged: `Reason: ${finalReason}`,
       },
       ...prev,
     ])
@@ -252,6 +260,7 @@ export default function DoseCenter() {
     setLogging(null)
     setSkippingId(null)
     setSkipReason("")
+    setOtherNote("")
   }
 
   return (
@@ -417,6 +426,16 @@ export default function DoseCenter() {
                                 </option>
                               ))}
                             </select>
+                            {skipReason === "Other" && (
+                              <input
+                                type="text"
+                                value={otherNote}
+                                onChange={(e) => setOtherNote(e.target.value)}
+                                placeholder="Specify reason (e.g. procedure, side effect)…"
+                                className="w-full text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 mb-2 bg-white text-slate-800 focus:outline-none focus:ring-1 focus:ring-teal-500"
+                                autoFocus
+                              />
+                            )}
                           </div>
                           <div className="flex gap-2">
                             <Button
@@ -434,6 +453,7 @@ export default function DoseCenter() {
                               onClick={() => {
                                 setSkippingId(null)
                                 setSkipReason("")
+                                setOtherNote("")
                               }}
                             >
                               Cancel

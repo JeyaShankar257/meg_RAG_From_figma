@@ -227,7 +227,7 @@ export default function Transparency() {
     }
   }
 
-  const trustScore = trustData.assuranceScore || adherenceData.score || 100
+  const trustScore = trustData.assuranceScore ?? adherenceData.score ?? 100
 
   return (
     <div className="p-4 lg:p-6 space-y-5 animate-fade-in">
@@ -254,7 +254,7 @@ export default function Transparency() {
       {/* Trust score breakdown */}
       <Card padding="md">
         <CardHeader>
-          <CardTitle>Your Adherence Trust Score</CardTitle>
+          <CardTitle>Data Assurance &amp; Trust Score</CardTitle>
           <Badge variant={trustScore >= 80 ? "success" : "warning"}>
             {trustScore}
           </Badge>
@@ -264,7 +264,7 @@ export default function Transparency() {
           <AdherenceRing score={trustScore} size={90} label="Trust" />
           <div className="flex-1">
             <p className="text-sm text-slate-600 mb-3">
-              Your trust score is continuously verified from live adherence
+              Your data assurance score is continuously verified from live adherence
               tracking, cryptographic consent verification, and clinical audit
               events.
             </p>

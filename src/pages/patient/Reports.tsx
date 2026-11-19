@@ -3,6 +3,7 @@ import { useEffect, useState } from "react"
 import type {
   PatientUploadedReport,
   PatientAdherenceSummary,
+  Report,
 } from "../../lib/types"
 
 import {
@@ -80,6 +81,17 @@ export default function Reports() {
   const [liveAdherence, setLiveAdherence] =
     useState<PatientAdherenceSummary | null>(null)
 
+  const [adherenceReports, setAdherenceReports] = useState<Report[]>([])
+
+  const [generatingPeriod, setGeneratingPeriod] = useState<
+    "weekly" | "monthly" | null
+  >(null)
+
+  const [previewHtml, setPreviewHtml] = useState<{
+    title: string
+    html: string
+  } | null>(null)
+
   const [form, setForm] = useState({
     title: "",
 
@@ -119,18 +131,53 @@ export default function Reports() {
       api.reports.list(patientId).catch(() => ({ reports: [] })),
 
       api.patients.getAdherence(patientId).catch(() => null),
+
+      api.patients
+        .getAdherenceReports(patientId)
+        .catch(() => ({ reports: [] })),
     ])
 
-      .then(([{ reports }, adherence]) => {
+      .then(([{ reports }, adherence, adherenceReps]) => {
         setUploadedReports((reports || []) as PatientUploadedReport[])
 
         if (adherence) setLiveAdherence(adherence)
+
+        if (adherenceReps?.reports && adherenceReps.reports.length > 0) {
+          setAdherenceReports(adherenceReps.reports)
+        }
       })
 
       .catch(() => setError("Reports could not be loaded. Retry to refresh."))
 
       .finally(() => setLoadingReports(false))
   }, [patientId])
+
+  const handleGenerateReport = async (period: "weekly" | "monthly") => {
+    if (!patientId) return
+    setGeneratingPeriod(period)
+    setError("")
+    setSuccessMessage("")
+    try {
+      const res = await api.patients.generateAdherenceReport(
+        patientId,
+        period,
+        true,
+      )
+      if (res?.report) {
+        setAdherenceReports((prev) => [
+          res.report,
+          ...prev.filter((r) => r.id !== res.report.id),
+        ])
+        setSuccessMessage(
+          `Your ${period === "weekly" ? "weekly" : "monthly"} adherence report has been generated and sent to your email!`,
+        )
+      }
+    } catch {
+      setError(`Failed to generate ${period} report. Please try again.`)
+    } finally {
+      setGeneratingPeriod(null)
+    }
+  }
 
   const handleUpload = async (event: React.FormEvent) => {
     event.preventDefault()
@@ -435,9 +482,11 @@ export default function Reports() {
                     </div>
                     <p className="text-xs text-slate-500 mt-1">
                       {REPORT_CATEGORY_LABELS[report.category]} · Report date{" "}
-                      {new Date(
-                        `${report.reportDate}T00:00:00`,
-                      ).toLocaleDateString()}
+                      {report.reportDate
+                        ? new Date(
+                            `${report.reportDate.split("T")[0]}T00:00:00`,
+                          ).toLocaleDateString()
+                        : "—"}
                     </p>
                     <p className="text-xs text-slate-400 mt-1">
                       {report.fileName} · {formatFileSize(report.fileSize)}
@@ -479,14 +528,34 @@ export default function Reports() {
         )}
       </section>
 
-      <section className="space-y-3">
-        <div>
-          <h2 className="text-base font-semibold text-slate-900">
-            Adherence Reports
-          </h2>
-          <p className="text-xs text-slate-500">
-            Your automatically generated weekly and monthly summaries.
-          </p>
+      <section className="space-y-4">
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <div>
+            <h2 className="text-base font-semibold text-slate-900">
+              Adherence Reports
+            </h2>
+            <p className="text-xs text-slate-500">
+              Your automatically generated weekly and monthly summaries.
+            </p>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <Button
+              size="sm"
+              variant="outline"
+              loading={generatingPeriod === "weekly"}
+              onClick={() => void handleGenerateReport("weekly")}
+            >
+              Send Weekly Report
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              loading={generatingPeriod === "monthly"}
+              onClick={() => void handleGenerateReport("monthly")}
+            >
+              Send Monthly Report
+            </Button>
+          </div>
         </div>
 
         {liveAdherence ? (
@@ -570,7 +639,190 @@ export default function Reports() {
             No adherence report records available yet.
           </p>
         )}
+
+        {/* Periodic Reports History */}
+        <div className="space-y-3 pt-2">
+          <div className="flex items-center justify-between gap-3">
+            <h3 className="text-sm font-semibold text-slate-900">
+              Weekly &amp; Monthly Reports History
+            </h3>
+            <Badge variant="default">{adherenceReports.length} delivered</Badge>
+          </div>
+
+          {adherenceReports.length === 0 ? (
+            <Card
+              padding="md"
+              className="text-center bg-slate-50 border-dashed border-slate-200"
+            >
+              <p className="text-sm text-slate-600 font-medium">
+                No past periodic reports generated yet
+              </p>
+              <p className="text-xs text-slate-400 mt-1">
+                Reports are sent automatically every Sunday (weekly) and on the 1st of each month.
+              </p>
+            </Card>
+          ) : (
+            adherenceReports.map((report, i) => (
+              <Card
+                key={report.id || `rep-${i}`}
+                padding="md"
+                className="animate-slide-in-up border-slate-200"
+              >
+                <div className="flex items-start justify-between gap-4 mb-4">
+                  <div>
+                    <div className="flex items-center gap-2 mb-1">
+                      <Badge
+                        variant={
+                          report.period === "monthly" ? "info" : "default"
+                        }
+                        size="sm"
+                      >
+                        {report.period === "weekly"
+                          ? "Weekly Report"
+                          : "Monthly Report"}
+                      </Badge>
+                      <StatusPill status={report.trend} />
+                    </div>
+                    <p className="text-xs text-slate-500 font-mono">
+                      {report.startDate} → {report.endDate}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <AdherenceRing
+                      score={report.adherencePercent}
+                      size={64}
+                      strokeWidth={7}
+                      animate={false}
+                    />
+                  </div>
+                </div>
+
+                <div className="bg-gradient-to-r from-teal-50 to-cyan-50 border border-teal-100 rounded-xl px-4 py-3 mb-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className="text-2xl font-bold text-teal-700">
+                        {report.adherencePercent}%
+                      </span>
+                      <span className="text-teal-600 ml-2 text-xs font-semibold uppercase">
+                        {report.trend}
+                      </span>
+                    </div>
+                    <div className="text-right text-xs">
+                      <p className="font-medium text-slate-700">
+                        {report.missedDays} missed day
+                        {report.missedDays !== 1 ? "s" : ""}
+                      </p>
+                      <p className="text-slate-500">
+                        Streak: {report.streakDays || 0} days
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {report.insights && report.insights.length > 0 && (
+                  <div className="space-y-1.5 mb-3">
+                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                      Highlights
+                    </p>
+                    {report.insights.map((insight, j) => (
+                      <div
+                        key={j}
+                        className="flex items-start gap-2 text-xs text-slate-700"
+                      >
+                        <span className="text-teal-500 font-bold">·</span>
+                        <span>{insight}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div className="flex items-center justify-between pt-3 border-t border-slate-100 text-xs text-slate-400 flex-wrap gap-2">
+                  <span>
+                    {report.deliveredAt
+                      ? `Delivered ${new Date(report.deliveredAt).toLocaleDateString()} via email`
+                      : "Delivered via email"}
+                  </span>
+                  {(report as any).htmlContent && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() =>
+                        setPreviewHtml({
+                          title: `${report.period === "weekly" ? "Weekly" : "Monthly"} Report (${report.startDate} — ${report.endDate})`,
+                          html: (report as any).htmlContent,
+                        })
+                      }
+                    >
+                      View Email Preview
+                    </Button>
+                  )}
+                </div>
+              </Card>
+            ))
+          )}
+
+          {/* Scheduled Background Jobs Info Card */}
+          <Card
+            padding="md"
+            className="bg-slate-50/80 border-dashed border-slate-200"
+          >
+            <div className="flex items-center justify-between gap-3 mb-2">
+              <span className="text-xs font-semibold text-slate-700 uppercase tracking-wide">
+                Automated Background Schedule
+              </span>
+              <Badge variant="success" size="sm">
+                Active Cron in Background
+              </Badge>
+            </div>
+            <div className="grid sm:grid-cols-2 gap-3 text-xs text-slate-600">
+              <div className="p-2.5 bg-white rounded border border-slate-200">
+                <span className="font-semibold block text-slate-800">
+                  Weekly Adherence Report
+                </span>
+                <span>Runs every Sunday at 18:00 UTC</span>
+              </div>
+              <div className="p-2.5 bg-white rounded border border-slate-200">
+                <span className="font-semibold block text-slate-800">
+                  Monthly Adherence Report
+                </span>
+                <span>Runs 1st of every month at 18:00 UTC</span>
+              </div>
+            </div>
+          </Card>
+        </div>
       </section>
+
+      {/* HTML Report Preview Modal */}
+      {previewHtml && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 animate-fade-in">
+          <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] flex flex-col overflow-hidden">
+            <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
+              <h3 className="font-semibold text-slate-800 text-sm">
+                {previewHtml.title}
+              </h3>
+              <button
+                type="button"
+                onClick={() => setPreviewHtml(null)}
+                className="text-slate-400 hover:text-slate-600 text-lg font-bold p-1 leading-none"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="flex-1 overflow-auto p-4 bg-slate-100">
+              <iframe
+                title="Report Email Preview"
+                srcDoc={previewHtml.html}
+                className="w-full h-[550px] bg-white rounded border border-slate-200 shadow-sm"
+              />
+            </div>
+            <div className="px-5 py-3 border-t border-slate-200 bg-slate-50 flex justify-end">
+              <Button size="sm" onClick={() => setPreviewHtml(null)}>
+                Close Preview
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

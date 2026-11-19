@@ -182,11 +182,10 @@ export default function PatientLogin() {
 
           <div className="mt-6 p-4 bg-cyan-50 border border-cyan-100 rounded-lg">
             <p className="text-xs text-cyan-700 font-medium mb-1">
-              Sign in with your Supabase account
+              Sign in with your registered account
             </p>
             <p className="text-xs text-cyan-600">
-              Logged in as Marcus Rivera (PT-00231). Demo environment with
-              fictional data.
+              Enter the patient email and password provided by your clinic invitation or care team.
             </p>
           </div>
 

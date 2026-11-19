@@ -27,13 +27,23 @@ dosesRouter.post("/", async (c) => {
 
     const admin = getAdminClient();
 
-    const { data: patient } = await admin
+    const candidateIds = [
+        validated.patientId,
+        validated.patientId.replace(/^PT-/i, "p-"),
+        validated.patientId.replace(/^PT-/i, "P-"),
+    ];
+
+    const patientQuery = admin
         .from("patients")
-        .select("id, workspace_id, profile_id")
-        .eq("id", validated.patientId)
-        .single();
+        .select("id, workspace_id, profile_id");
+    const { data: patient } = typeof (patientQuery as any).in === "function"
+        ? await (patientQuery as any).in("id", candidateIds).limit(1).maybeSingle()
+        : await patientQuery.eq("id", validated.patientId).maybeSingle();
+
     if (!patient) throw ApiError.notFound("Patient not found");
-    const { data: assignments } = await admin.from("care_team_assignments").select("*").eq("patient_id", validated.patientId);
+    const resolvedPatientId = patient.id;
+
+    const { data: assignments } = await admin.from("care_team_assignments").select("*").eq("patient_id", resolvedPatientId);
     const access = authorizePatientAccess({
         user,
         patient: { id: patient.id, workspaceId: patient.workspace_id, profileId: patient.profile_id },
@@ -47,7 +57,7 @@ dosesRouter.post("/", async (c) => {
         .select("id, patient_id")
         .eq("id", validated.scheduleId)
         .maybeSingle();
-    if (schedule && schedule.patient_id !== validated.patientId) {
+    if (schedule && schedule.patient_id !== resolvedPatientId) {
         throw ApiError.badRequest("Dose schedule does not belong to this patient");
     }
     if (!schedule && process.env["DEMO_MODE"] !== "true") {
@@ -80,7 +90,7 @@ dosesRouter.post("/", async (c) => {
         .from("dose_logs")
         .insert({
             schedule_id: validated.scheduleId,
-            patient_id: validated.patientId,
+            patient_id: resolvedPatientId,
             status: validated.status,
             method: validated.method || null,
             reason: validated.reason || null,

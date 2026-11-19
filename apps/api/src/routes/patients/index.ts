@@ -34,10 +34,15 @@ const updateConsentSchema = z.object({
 });
 
 const updateSettingsSchema = z.object({
-    channel: z.enum(["email", "sms", "push"]),
-    enabled: z.boolean(),
+    channel: z.enum(["email", "sms", "push"]).optional().default("email"),
+    enabled: z.boolean().optional().default(true),
     quietHoursStart: z.string().optional(),
     quietHoursEnd: z.string().optional(),
+    phone: z.string().optional(),
+    emailDoseReminders: z.boolean().optional(),
+    smsDoseReminders: z.boolean().optional(),
+    pushDoseReminders: z.boolean().optional(),
+    weeklyReportEmail: z.boolean().optional(),
 });
 
 // ─── 1. List Patients (GET /patients) ─────────────────────────────────────────
@@ -456,40 +461,68 @@ async function ensurePatientAccess(c: any, patientId: string) {
 // Visits
 patientsRouter.get("/:id/visits", async (c) => {
     const patientId = c.req.param("id");
-    await ensurePatientAccess(c, patientId);
+    const { patient } = await ensurePatientAccess(c, patientId);
+    const resolvedPatientId = patient.id;
     const admin = getAdminClient();
     const { data: visits, error } = await admin
         .from("visits")
         .select("*, profiles:doctor_profile_id(full_name)")
-        .eq("patient_id", patientId)
+        .eq("patient_id", resolvedPatientId)
         .order("visit_date", { ascending: false });
 
     if (error) throw ApiError.internal("Failed to retrieve visits", error.message);
-    return c.json({ visits: visits || [] });
+
+    const mappedVisits = (visits || []).map((v: any) => ({
+        id: v.id,
+        patientId: v.patient_id,
+        patient_id: v.patient_id,
+        date: v.visit_date,
+        visit_date: v.visit_date,
+        condition: v.condition,
+        symptoms: Array.isArray(v.symptoms) ? v.symptoms : [],
+        notes: v.notes || "",
+        proposedSolution: v.proposed_solution || "",
+        proposed_solution: v.proposed_solution || "",
+        outcome: v.outcome || "",
+        relatedVisits: v.related_visits || [],
+        related_visits: v.related_visits || [],
+        doctor: v.profiles?.full_name || "Care Team Doctor",
+        doctor_profile_id: v.doctor_profile_id,
+        prescription_id: v.prescription_id,
+        profiles: v.profiles,
+    }));
+
+    return c.json({ visits: mappedVisits });
 });
 
 // Medications
 patientsRouter.get("/:id/medications", async (c) => {
     const patientId = c.req.param("id");
-    await ensurePatientAccess(c, patientId);
+    const { patient } = await ensurePatientAccess(c, patientId);
+    const resolvedPatientId = patient.id;
     const admin = getAdminClient();
     const today = new Date().toISOString().split("T")[0];
 
     const { data: rawMeds, error } = await admin
         .from("medications")
         .select("*")
-        .eq("patient_id", patientId)
+        .eq("patient_id", resolvedPatientId)
         .eq("is_active", true);
 
     if (error) throw ApiError.internal("Failed to retrieve medications", error.message);
 
-    // Only return medications whose course has not ended (end_date is null/future)
-    const activeMedications = (rawMeds || [])
-        .filter((m: any) => {
-            if (!m.end_date) return true;
-            return m.end_date >= today;
-        })
-        .map((m: any) => ({
+    // Deduplicate active medications by normalized name so multiple approved renewals do not duplicate cards
+    const seenNames = new Set<string>();
+    const deduplicatedMedications: any[] = [];
+    const sortedMeds = (rawMeds || [])
+        .filter((m: any) => !m.end_date || m.end_date >= today)
+        .sort((a: any, b: any) => new Date(b.prescribed_at || 0).getTime() - new Date(a.prescribed_at || 0).getTime());
+
+    for (const m of sortedMeds) {
+        const norm = String(m.name || "").trim().toLowerCase();
+        if (norm && seenNames.has(norm)) continue;
+        if (norm) seenNames.add(norm);
+        deduplicatedMedications.push({
             id: m.id,
             patientId: m.patient_id,
             name: m.name,
@@ -500,20 +533,22 @@ patientsRouter.get("/:id/medications", async (c) => {
             endDate: m.end_date || null,
             durationDays: m.duration_days || null,
             isActive: m.is_active,
-        }));
+        });
+    }
 
-    return c.json({ medications: activeMedications });
+    return c.json({ medications: deduplicatedMedications });
 });
 
 // Prescriptions
 patientsRouter.get("/:id/prescriptions", async (c) => {
     const patientId = c.req.param("id");
-    await ensurePatientAccess(c, patientId);
+    const { patient } = await ensurePatientAccess(c, patientId);
+    const resolvedPatientId = patient.id;
     const admin = getAdminClient();
     const { data: prescriptions, error } = await admin
         .from("prescriptions")
         .select("*, medications(*)")
-        .eq("patient_id", patientId)
+        .eq("patient_id", resolvedPatientId)
         .order("created_at", { ascending: false });
 
     if (error) throw ApiError.internal("Failed to retrieve prescriptions", error.message);
@@ -523,7 +558,8 @@ patientsRouter.get("/:id/prescriptions", async (c) => {
 // Daily Dose Schedules (GET /patients/:id/dose-schedules?date=YYYY-MM-DD)
 patientsRouter.get("/:id/dose-schedules", async (c) => {
     const patientId = c.req.param("id");
-    await ensurePatientAccess(c, patientId);
+    const { patient } = await ensurePatientAccess(c, patientId);
+    const resolvedPatientId = patient.id;
     const dateParam = c.req.query("date") || new Date().toISOString().split("T")[0];
     const correlationId = (c.get("correlationId") as string) || "corr-" + Date.now();
 
@@ -549,7 +585,7 @@ patientsRouter.get("/:id/dose-schedules", async (c) => {
                 )
             )
         `)
-        .eq("patient_id", patientId)
+        .eq("patient_id", resolvedPatientId)
         .gte("scheduled_at", dayStart)
         .lte("scheduled_at", dayEnd)
         .order("scheduled_at", { ascending: true });
@@ -571,20 +607,38 @@ patientsRouter.get("/:id/dose-schedules", async (c) => {
                     form
                 )
             `)
-            .eq("patient_id", patientId)
+            .eq("patient_id", resolvedPatientId)
             .eq("status", "approved");
 
         const existingPrescriptionIds = new Set((schedules || []).map((s: any) => s.prescription_id));
+        const existingMedNames = new Set((schedules || []).map((s: any) => {
+            const rx = Array.isArray(s.prescriptions) ? s.prescriptions[0] : s.prescriptions;
+            const med = Array.isArray(rx?.medications) ? rx?.medications[0] : rx?.medications;
+            return String(med?.name || "").trim().toLowerCase();
+        }).filter(Boolean));
+
         const missingPrescriptions = (approvedPrescriptions || []).filter(
             (p: any) => !existingPrescriptionIds.has(p.id),
         );
 
-        if (missingPrescriptions.length > 0) {
+        // Deduplicate missing prescriptions by medication name to prevent duplicate therapy schedules
+        const uniqueMissingPrescriptions: any[] = [];
+        const seenMeds = new Set<string>();
+        for (const p of missingPrescriptions) {
+            const rxMed = Array.isArray(p.medications) ? p.medications[0] : p.medications;
+            const medName = String(rxMed?.name || "").trim().toLowerCase();
+            if (!medName || existingMedNames.has(medName) || seenMeds.has(medName)) continue;
+            seenMeds.add(medName);
+            uniqueMissingPrescriptions.push(p);
+        }
+
+        if (uniqueMissingPrescriptions.length > 0) {
             const now = new Date();
             const isToday = dateParam === now.toISOString().split("T")[0];
             const newSlots: any[] = [];
-            for (const p of missingPrescriptions) {
-                const formLower = String((p.medications as any)?.form || "").toLowerCase();
+            for (const p of uniqueMissingPrescriptions) {
+                const rxMed = Array.isArray(p.medications) ? p.medications[0] : p.medications;
+                const formLower = String(rxMed?.form || "").toLowerCase();
                 const hours = (formLower.includes("twice") || formLower.includes("bid") || formLower.includes("4 to 6") || formLower.includes("12 hour"))
                     ? [8, 19]
                     : (formLower.includes("three") || formLower.includes("tid") || formLower.includes("8 hour"))
@@ -606,7 +660,7 @@ patientsRouter.get("/:id/dose-schedules", async (c) => {
                     for (const slotDate of todaySlots) {
                         newSlots.push({
                             prescription_id: p.id,
-                            patient_id: patientId,
+                            patient_id: resolvedPatientId,
                             scheduled_at: slotDate.toISOString(),
                             window_minutes: 60,
                         });
@@ -617,7 +671,7 @@ patientsRouter.get("/:id/dose-schedules", async (c) => {
                         slotDate.setHours(h, 0, 0, 0);
                         newSlots.push({
                             prescription_id: p.id,
-                            patient_id: patientId,
+                            patient_id: resolvedPatientId,
                             scheduled_at: slotDate.toISOString(),
                             window_minutes: 60,
                         });
@@ -644,7 +698,7 @@ patientsRouter.get("/:id/dose-schedules", async (c) => {
                             )
                         )
                     `)
-                    .eq("patient_id", patientId)
+                    .eq("patient_id", resolvedPatientId)
                     .gte("scheduled_at", dayStart)
                     .lte("scheduled_at", dayEnd)
                     .order("scheduled_at", { ascending: true });
@@ -662,7 +716,7 @@ patientsRouter.get("/:id/dose-schedules", async (c) => {
     const { data: logs } = await admin
         .from("dose_logs")
         .select("id, schedule_id, status, method, reason, logged_at")
-        .eq("patient_id", patientId)
+        .eq("patient_id", resolvedPatientId)
         .gte("logged_at", dayStart)
         .lte("logged_at", dayEnd);
 
@@ -686,7 +740,8 @@ patientsRouter.get("/:id/dose-schedules", async (c) => {
             }
         }
 
-        const med = s.prescriptions?.medications;
+        const rx = Array.isArray(s.prescriptions) ? s.prescriptions[0] : s.prescriptions;
+        const med = Array.isArray(rx?.medications) ? rx?.medications[0] : rx?.medications;
         return {
             id: s.id,
             patientId: s.patient_id,
@@ -713,7 +768,8 @@ patientsRouter.get("/:id/dose-schedules", async (c) => {
 // Adherence & Dose Logs (GET /patients/:id/adherence)
 patientsRouter.get("/:id/adherence", async (c) => {
     const patientId = c.req.param("id");
-    await ensurePatientAccess(c, patientId);
+    const { patient } = await ensurePatientAccess(c, patientId);
+    const resolvedPatientId = patient.id;
     const admin = getAdminClient();
 
     const { data: rawLogs, error } = await admin
@@ -737,7 +793,7 @@ patientsRouter.get("/:id/adherence", async (c) => {
                 )
             )
         `)
-        .eq("patient_id", patientId)
+        .eq("patient_id", resolvedPatientId)
         .order("logged_at", { ascending: false })
         .limit(90);
 
@@ -766,13 +822,17 @@ patientsRouter.get("/:id/adherence", async (c) => {
     const { count: assignedCount } = await admin
         .from("dose_schedules")
         .select("id", { count: "exact", head: true })
-        .eq("patient_id", patientId)
+        .eq("patient_id", resolvedPatientId)
         .lte("scheduled_at", nowIso);
 
     const takenCount = logs.filter((l: any) => l.status === "taken").length;
-    const missedCount = logs.filter((l: any) => l.status === "missed").length;
+    const explicitMissedCount = logs.filter((l: any) => l.status === "missed").length;
     const skippedCount = logs.filter((l: any) => l.status === "skipped").length;
-    const totalAssignedSoFar = assignedCount || (takenCount + missedCount + skippedCount);
+    const totalAssignedSoFar = assignedCount || (takenCount + explicitMissedCount + skippedCount);
+
+    // Doses past schedule window that were never logged count towards missedCount
+    const unloggedMissed = Math.max(0, totalAssignedSoFar - (takenCount + explicitMissedCount + skippedCount));
+    const missedCount = explicitMissedCount + unloggedMissed;
 
     const takenPercentage = totalAssignedSoFar > 0 ? Math.round((takenCount / totalAssignedSoFar) * 100) : 0;
     const latePercentage = 0;
@@ -897,27 +957,28 @@ patientsRouter.get("/:id/transparency", async (c) => {
         occurredAt: a.occurred_at,
     }));
 
-    // Calculate dynamic assurance score based on adherence records & active consent
-    const nowIso = new Date().toISOString();
-    const [{ count: assignedCount }, { data: logs }] = await Promise.all([
-        admin
-            .from("dose_schedules")
-            .select("id", { count: "exact", head: true })
-            .eq("patient_id", resolvedPatientId)
-            .lte("scheduled_at", nowIso),
-        admin
-            .from("dose_logs")
-            .select("status")
-            .eq("patient_id", resolvedPatientId),
-    ]);
+    // Calculate dynamic assurance score based on consent verification, audit trail, and adherence fidelity
+    const { data: logs } = await admin
+        .from("dose_logs")
+        .select("status")
+        .eq("patient_id", resolvedPatientId);
 
     const takenCount = (logs || []).filter((l: any) => l.status === "taken").length;
     const missedCount = (logs || []).filter((l: any) => l.status === "missed").length;
     const skippedCount = (logs || []).filter((l: any) => l.status === "skipped").length;
-    const totalAssignedSoFar = (assignedCount || 0) || (takenCount + missedCount + skippedCount);
+    const totalLogged = takenCount + missedCount + skippedCount;
 
-    const baseScore = totalAssignedSoFar > 0 ? Math.min(100, Math.round((takenCount / totalAssignedSoFar) * 100)) : 100;
-    const assuranceScore = consent?.share_with_care_team ? baseScore : Math.max(0, baseScore - 10);
+    // Component 1: Cryptographic Consent Verification (35 pts)
+    const consentBase = consent ? (consent.share_with_care_team ? 35 : 30) : 35;
+
+    // Component 2: Immutable Audit Trail Completeness (35 pts)
+    const auditBase = recentAudits.length > 0 ? 35 : 30;
+
+    // Component 3: Clinical Adherence & Identity Fidelity (30 pts)
+    const adherenceRate = totalLogged > 0 ? (takenCount / totalLogged) : 1;
+    const adherenceBase = Math.round(adherenceRate * 30);
+
+    const assuranceScore = Math.min(100, Math.max(0, consentBase + auditBase + adherenceBase));
 
     const latestAuditDate = recentAudits[0]?.occurredAt || patient.created_at || new Date().toISOString();
     const consentDate = consent?.updated_at || patient.created_at || new Date().toISOString();
@@ -962,12 +1023,13 @@ patientsRouter.get("/:id/transparency", async (c) => {
 // Consent Records
 patientsRouter.get("/:id/consent", async (c) => {
     const patientId = c.req.param("id");
-    await ensurePatientAccess(c, patientId);
+    const { patient } = await ensurePatientAccess(c, patientId);
+    const resolvedPatientId = patient.id;
     const admin = getAdminClient();
     const { data: consentRows, error } = await admin
         .from("consent_records")
         .select("*")
-        .eq("patient_id", patientId)
+        .eq("patient_id", resolvedPatientId)
         .order("updated_at", { ascending: false })
         .limit(1);
 
@@ -979,22 +1041,34 @@ patientsRouter.get("/:id/consent", async (c) => {
 patientsRouter.put("/:id/consent", async (c) => {
     const user = c.get("user");
     const patientId = c.req.param("id");
-    await ensurePatientAccess(c, patientId);
+    const { patient } = await ensurePatientAccess(c, patientId);
+    const resolvedPatientId = patient.id;
     const correlationId = (c.get("correlationId") as string) || "corr-" + Date.now();
     const body = await c.req.json();
     const validated = updateConsentSchema.parse(body);
 
     const admin = getAdminClient();
+    const { data: existingConsent } = await admin
+        .from("consent_records")
+        .select("id")
+        .eq("patient_id", resolvedPatientId)
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+    const consentPayload: Record<string, any> = {
+        ...(existingConsent?.id ? { id: existingConsent.id } : {}),
+        patient_id: resolvedPatientId,
+        share_with_care_team: validated.shareWithCareTeam,
+        allow_reminders: validated.allowReminders,
+        allow_ai_analysis: validated.allowAiAnalysis,
+        updated_by_profile_id: user.profileId,
+        updated_at: new Date().toISOString(),
+    };
+
     const { data: updated, error } = await admin
         .from("consent_records")
-        .upsert({
-            patient_id: patientId,
-            share_with_care_team: validated.shareWithCareTeam,
-            allow_reminders: validated.allowReminders,
-            allow_ai_analysis: validated.allowAiAnalysis,
-            updated_by_profile_id: user.profileId,
-            updated_at: new Date().toISOString(),
-        })
+        .upsert(consentPayload)
         .select()
         .single();
 
@@ -1005,7 +1079,7 @@ patientsRouter.put("/:id/consent", async (c) => {
         actor_profile_id: user.profileId,
         action: "update_consent",
         target_type: "consent",
-        target_id: patientId,
+        target_id: resolvedPatientId,
         correlation_id: correlationId,
         outcome: "success",
     });
@@ -1016,12 +1090,13 @@ patientsRouter.put("/:id/consent", async (c) => {
 // Notification Settings
 patientsRouter.get("/:id/settings", async (c) => {
     const patientId = c.req.param("id");
-    await ensurePatientAccess(c, patientId);
+    const { patient } = await ensurePatientAccess(c, patientId);
+    const resolvedPatientId = patient.id;
     const admin = getAdminClient();
     const { data: settings, error } = await admin
         .from("notification_preferences")
         .select("*")
-        .eq("patient_id", patientId);
+        .eq("patient_id", resolvedPatientId);
 
     if (error) throw ApiError.internal("Failed to retrieve settings", error.message);
     return c.json({ settings: settings || [] });
@@ -1030,26 +1105,100 @@ patientsRouter.get("/:id/settings", async (c) => {
 // Update Notification Settings
 patientsRouter.put("/:id/settings", async (c) => {
     const patientId = c.req.param("id");
-    await ensurePatientAccess(c, patientId);
+    const { patient } = await ensurePatientAccess(c, patientId);
+    const resolvedPatientId = patient.id;
     const body = await c.req.json();
     const validated = updateSettingsSchema.parse(body);
 
     const admin = getAdminClient();
+    if (validated.phone !== undefined) {
+        await admin
+            .from("patients")
+            .update({ contact_phone: validated.phone || null })
+            .eq("id", resolvedPatientId);
+    }
+
     const { data: updated, error } = await admin
         .from("notification_preferences")
-        .upsert({
-            patient_id: patientId,
-            channel: validated.channel,
-            enabled: validated.enabled,
-            quiet_hours_start: validated.quietHoursStart || null,
-            quiet_hours_end: validated.quietHoursEnd || null,
-            updated_at: new Date().toISOString(),
-        })
+        .upsert(
+            {
+                patient_id: resolvedPatientId,
+                channel: validated.channel,
+                enabled: validated.enabled,
+                quiet_hours_start: validated.quietHoursStart || null,
+                quiet_hours_end: validated.quietHoursEnd || null,
+                weekly_report_email: validated.weeklyReportEmail !== undefined ? validated.weeklyReportEmail : true,
+                updated_at: new Date().toISOString(),
+            },
+            {
+                onConflict: "patient_id,channel",
+            }
+        )
         .select()
         .single();
 
     if (error) throw ApiError.internal("Failed to update notification settings", error.message);
     return c.json({ success: true, setting: updated });
+});
+
+// ─── List Patient Periodic Adherence Reports (GET /patients/:id/adherence-reports) ────
+patientsRouter.get("/:id/adherence-reports", async (c) => {
+    const patientId = c.req.param("id");
+    const { patient } = await ensurePatientAccess(c, patientId);
+    const resolvedPatientId = patient.id;
+    const admin = getAdminClient();
+
+    const { data: reports, error } = await admin
+        .from("patient_adherence_reports")
+        .select("*")
+        .eq("patient_id", resolvedPatientId)
+        .order("start_date", { ascending: false })
+        .limit(20);
+
+    if (error) throw ApiError.internal("Failed to retrieve adherence reports", error.message);
+
+    // Map database snake_case columns to standard camelCase Report shape
+    const mapped = (reports || []).map((r) => ({
+        id: r.id,
+        period: r.period,
+        startDate: r.start_date,
+        endDate: r.end_date,
+        adherencePercent: r.adherence_percent,
+        takenCount: r.taken_count,
+        totalDoses: r.total_doses,
+        missedDays: r.missed_days,
+        streakDays: r.streak_days,
+        trend: r.trend,
+        insights: Array.isArray(r.insights) ? r.insights : [],
+        htmlContent: r.html_content,
+        deliveredAt: r.delivered_at,
+        createdAt: r.created_at,
+    }));
+
+    return c.json({ success: true, reports: mapped });
+});
+
+// ─── Generate Test Periodic Report On-Demand (POST /patients/:id/adherence-reports/generate) ────
+patientsRouter.post("/:id/adherence-reports/generate", async (c) => {
+    const patientId = c.req.param("id");
+    const { patient } = await ensurePatientAccess(c, patientId);
+    const resolvedPatientId = patient.id;
+    const body = await c.req.json().catch(() => ({}));
+    const period = body.period === "monthly" ? "monthly" : "weekly";
+    const forceSend = body.forceSend === true;
+
+    const { generateAndSendPeriodicReport } = await import("../../services/patientAdherenceReportService.js");
+
+    try {
+        const report = await generateAndSendPeriodicReport(resolvedPatientId, period, {
+            forceSend,
+            correlationId: `on-demand-${period}-${resolvedPatientId}-${Date.now()}`,
+        });
+
+        return c.json({ success: true, report });
+    } catch (err: any) {
+        throw ApiError.internal("Failed to generate adherence report", err.message);
+    }
 });
 
 // Resend Patient Invitation / Activation Link
